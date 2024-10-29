@@ -153,12 +153,11 @@ func main() {
     // Validate inputs
     if url == "" && list == "" && jsFile == "" {
         if isInputFromStdin() {
-            // Process input from stdin
-            enqueueFromStdin(urlChannel)
-        } else {
-            fmt.Println("Error: Either -u, -l, or input from stdin must be provided.")
-            os.Exit(1)
+            processInputs("", "", output, regex, cookies, proxy, threads)
+            return
         }
+        fmt.Println("Error: Either -u, -l, or -f must be provided.")
+        os.Exit(1)
     }
 
     // Handle quiet mode
@@ -206,32 +205,30 @@ func isInputFromStdin() bool {
     return err == nil && fi.Mode()&os.ModeNamedPipe != 0
 }
 
-// Disables all color output by setting color codes to an empty string
+// Disables color output by setting color codes to empty strings
 func disableColors() {
     for k := range colors {
         colors[k] = ""
     }
 }
 
-// Processes a JS file and searches for sensitive data
-func processJSFile(jsFile string, regex string) {
+// Processes a JS file and searches for sensitive data using a regex
+func processJSFile(jsFile, regex string) {
     if _, err := os.Stat(jsFile); os.IsNotExist(err) {
         fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
-        return
     } else if err != nil {
         fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
-        return
+    } else {
+        fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
+        searchForSensitiveData(jsFile, regex, "", "")
     }
-
-    fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
-    searchForSensitiveData(jsFile, regex, "", "")
 }
 
+// Manages concurrent processing of URLs or files and writes results to an output file if specified
 func processInputs(url, list, output, regex, cookie, proxy string, threads int) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
 
-    // Prepare output file writer if specified
     var fileWriter *os.File
     if output != "" {
         var err error
@@ -243,7 +240,6 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
         defer fileWriter.Close()
     }
 
-    // Start worker pool for concurrent processing
     for i := 0; i < threads; i++ {
         wg.Add(1)
         go func() {
@@ -252,7 +248,6 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
                 _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy)
 
                 if fileWriter != nil {
-                    // Log processed URL and sensitive data to file
                     fmt.Fprintln(fileWriter, "URL:", u)
                     for name, matches := range sensitiveData {
                         for _, match := range matches {
@@ -260,7 +255,6 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
                         }
                     }
                 } else {
-                    // Print processed URL and sensitive data to console
                     fmt.Println("URL:", u)
                     for name, matches := range sensitiveData {
                         for _, match := range matches {
@@ -272,19 +266,17 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
         }()
     }
 
-    // Queue URLs or files for processing based on input type
     if err := enqueueURLs(url, list, urlChannel, regex); err != nil {
         fmt.Printf("Error in input processing: %v\n", err)
         close(urlChannel)
         return
     }
 
-    // Close channel after enqueue and wait for all workers to finish
     close(urlChannel)
     wg.Wait()
 }
 
-
+// Adds URLs to the channel based on input type
 func enqueueURLs(url, list string, urlChannel chan<- string, regex string) error {
     if list != "" {
         return enqueueFromFile(list, urlChannel)
@@ -314,7 +306,7 @@ func enqueueSingleURL(url string, urlChannel chan<- string, regex string) {
     if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
         urlChannel <- url
     } else {
-        processJSFile(url, regex) // Use your processJSFile function if URL is not a web link
+        processJSFile(url, regex)
     }
 }
 
@@ -326,15 +318,12 @@ func enqueueFromStdin(urlChannel chan<- string) {
     if err := scanner.Err(); err != nil {
         fmt.Printf("Error reading from stdin: %v\n", err)
     }
-    close(urlChannel) // Close channel after reading from stdin
 }
 
-
-
+// Searches for sensitive data in the specified URL or file using regex
 func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[string][]string) {
     var client *http.Client
 
-    // Configure the HTTP client with proxy if provided
     if proxy != "" {
         proxyURL, err := url.Parse(proxy)
         if err != nil {
@@ -346,9 +335,8 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
         client = &http.Client{}
     }
 
-    var sensitiveData map[string][]string // This will store the sensitive data found
+    var sensitiveData map[string][]string
 
-    // Check if the URL is HTTP/HTTPS
     if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
         req, err := http.NewRequest("GET", urlStr, nil)
         if err != nil {
@@ -356,12 +344,10 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
             return urlStr, nil
         }
 
-        // Add cookie to the request if provided
         if cookie != "" {
             req.Header.Set("Cookie", cookie)
         }
 
-        // Send the HTTP request
         resp, err := client.Do(req)
         if err != nil {
             fmt.Printf("Failed to fetch URL %s: %v\n", urlStr, err)
@@ -369,48 +355,39 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
         }
         defer resp.Body.Close()
 
-        // Read the response body
         body, err := ioutil.ReadAll(resp.Body)
         if err != nil {
             fmt.Printf("Error reading response body: %v\n", err)
             return urlStr, nil
         }
 
-        // Search for sensitive data using regex and store results
         sensitiveData = reportMatches(urlStr, body, regexPatterns)
-
     } else {
-        // Attempt to read a local file
         body, err := ioutil.ReadFile(urlStr)
         if err != nil {
             fmt.Printf("Error reading local file %s: %v\n", urlStr, err)
             return urlStr, nil
         }
 
-        // Search for sensitive data using regex and store results
         sensitiveData = reportMatches(urlStr, body, regexPatterns)
     }
 
-    return urlStr, sensitiveData // Return the URL and the collected sensitive data
+    return urlStr, sensitiveData
 }
 
+// Extracts matches from body content using regex patterns and stores them in a map
 func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.Regexp) map[string][]string {
-    // Create a map to collect matches for each regex pattern
     matchesMap := make(map[string][]string)
 
-    // Search for sensitive data using regex patterns
     for name, pattern := range regexPatterns {
         if pattern.Match(body) {
-            // Extract all matches from the body using the regex
             matches := pattern.FindAllString(string(body), -1)
             if len(matches) > 0 {
-                // Store matches in the map
                 matchesMap[name] = append(matchesMap[name], matches...)
             }
         }
     }
 
-    // Print all matches for each regex found
     if len(matchesMap) > 0 {
         fmt.Printf("[%sFOUND%s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
         for name, matches := range matchesMap {
@@ -422,5 +399,5 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
         fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], source)
     }
 
-    return matchesMap // Return the collected matches
+    return matchesMap
 }
