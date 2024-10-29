@@ -152,10 +152,21 @@ func main() {
     }
 
 
-    if url == "" && list == "" && jsFile == "" && isInputFromStdin() {
-        fmt.Println("Reading from stdin...")
-        processStdin(output, regex, cookies, proxy, threads)
-        return
+    if url == "" && list == "" && jsFile == "" {
+        if isInputFromStdin() {
+            scanner := bufio.NewScanner(os.Stdin)
+            for scanner.Scan() {
+                inputURL := scanner.Text()
+                // Process each input URL
+                processInputs(inputURL, "", output, regex, cookies, proxy, threads)
+            }
+            if err := scanner.Err(); err != nil {
+                fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
+            }
+            return
+        }
+        fmt.Println("Error: Either -u, -l, or -f must be provided.")
+        os.Exit(1)
     }
 
 
@@ -217,11 +228,6 @@ func isInputFromStdin() bool {
         return false
     }
     return fi.Mode()&os.ModeCharDevice == 0
-}
-
-func isInputFromStdin() bool {
-    fi, err := os.Stdin.Stat()
-    return err == nil && fi.Mode()&os.ModeNamedPipe != 0
 }
 
 
