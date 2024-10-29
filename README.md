@@ -1,6 +1,14 @@
 # jshunter
 
-jshunter is a command-line tool designed for analyzing JavaScript files and extracting endpoints.
+**jshunter** is a command-line tool designed for analyzing JavaScript files and extracting endpoints. This tool specializes in identifying sensitive data, such as API endpoints and potential security vulnerabilities, making it an essential resource for developers and security researchers.
+
+## Features
+
+- **Endpoint Extraction**: Automatically scans JavaScript files for URLs and API endpoints, allowing users to quickly identify potential points of interest.
+- **Sensitive Data Detection**: The tool analyzes the JavaScript code to uncover hard-coded secrets, API keys, and other sensitive information that could lead to security breaches.
+- **Customizable Options**: Users can specify various parameters, such as the number of threads for concurrent processing, cookies for authenticated sessions, and proxy settings for network configurations.
+- **Flexible Input**: Supports input from single URLs, lists of URLs from text files, and direct JavaScript file paths, providing flexibility based on user needs.
+- **Output Options**: Results can be saved to a specified output file, enabling easy access to the data extracted during the analysis.
 
 ## Usage Example
 
