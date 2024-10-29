@@ -63,5 +63,5 @@ Or download a [binary release](https://github.com/cc1a2b/jshunter/releases) for 
 
 ## License
 
-ffuf is released under MIT license. See [LICENSE](https://github.com/cc1a2b/jshunter/blob/master/LICENSE).
+JShunter is released under MIT license. See [LICENSE](https://github.com/cc1a2b/jshunter/blob/master/LICENSE).
 
