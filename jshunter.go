@@ -22,13 +22,13 @@ var colors = map[string]string{
     "YELLOW": "\033[0;33m",
     "CYAN":   "\033[0;36m",
     "PURPLE": "\033[0;35m",
-    "NC":     "\033[0m", // No Color
+    "NC":     "\033[0m",
 }
 
 
-// Define the default regex patterns
+
 var (
-    // Default regex patterns
+    //regex patterns
     regexPatterns = map[string]*regexp.Regexp{
 	"google_api":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
 	"firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}`),
@@ -107,50 +107,51 @@ var (
 )
 
 func main() {
-    // Define command-line flags
-    var url, list, jsFile, output, regex, cookies, proxy string
-    var threads int
-    var quiet, help bool
+    // Define command-line
+    var (
+        url, list, jsFile, output, regex, cookies, proxy string
+        threads                                           int
+        quiet, help                                       bool
+    )
 
-    // Define flags using StringVar and IntVar for both short and long options
+
     flag.StringVar(&url, "u", "", "Input a URL")
-    flag.StringVar(&url, "url", "", "Input a URL") // Long option for URL
+    flag.StringVar(&url, "url", "", "Input a URL")
     flag.StringVar(&list, "l", "", "Input a file with URLs (.txt)")
-    flag.StringVar(&list, "list", "", "Input a file with URLs (.txt)") // Long option for list
+    flag.StringVar(&list, "list", "", "Input a file with URLs (.txt)")
     flag.StringVar(&jsFile, "f", "", "Path to JavaScript file")
-    flag.StringVar(&jsFile, "file", "", "Path to JavaScript file") // Long option for file
-    flag.StringVar(&output, "o", "output.txt", "Where to save the output file (default: output.txt)")
-    flag.StringVar(&output, "output", "output.txt", "Where to save the output file (default: output.txt)") // Long option for output
-    flag.StringVar(&regex, "r", "", "RegEx for filtering purposes against found endpoints")
-    flag.StringVar(&regex, "regex", "", "RegEx for filtering purposes against found endpoints") // Long option for regex
-    flag.StringVar(&cookies, "c", "", "Add cookies for authenticated JS files")
-    flag.StringVar(&cookies, "cookies", "", "Add cookies for authenticated JS files") // Long option for cookies
+    flag.StringVar(&jsFile, "file", "", "Path to JavaScript file")
+    flag.StringVar(&output, "o", "output.txt", "Output file path (default: output.txt)")
+    flag.StringVar(&output, "output", "output.txt", "Output file path (default: output.txt)")
+    flag.StringVar(&regex, "r", "", "RegEx for filtering endpoints")
+    flag.StringVar(&regex, "regex", "", "RegEx for filtering endpoints")
+    flag.StringVar(&cookies, "c", "", "Cookies for authenticated JS files")
+    flag.StringVar(&cookies, "cookies", "", "Cookies for authenticated JS files")
     flag.StringVar(&proxy, "p", "", "Set proxy (host:port)")
-    flag.StringVar(&proxy, "proxy", "", "Set proxy (host:port)") // Long option for proxy
+    flag.StringVar(&proxy, "proxy", "", "Set proxy (host:port)")
     flag.IntVar(&threads, "t", 5, "Number of concurrent threads")
-    flag.IntVar(&threads, "threads", 5, "Number of concurrent threads") // Long option for threads
+    flag.IntVar(&threads, "threads", 5, "Number of concurrent threads")
     flag.BoolVar(&quiet, "q", false, "Quiet mode: suppress ASCII art output")
-    flag.BoolVar(&quiet, "quiet", false, "Quiet mode: suppress ASCII art output") // Long option for quiet
-    flag.BoolVar(&help, "h", false, "Show help message")
-    flag.BoolVar(&help, "help", false, "Show help message") // Long option for help
+    flag.BoolVar(&quiet, "quiet", false, "Quiet mode: suppress ASCII art output")
+    flag.BoolVar(&help, "h", false, "Display help message")
+    flag.BoolVar(&help, "help", false, "Display help message")
 
-    // Parse the flags
+
     flag.Parse()
 
-    // Show custom help if -h flag is used
     if help {
         customHelp()
         return
     }
 
-    // Custom help output for no arguments or quiet mode
+
     if len(os.Args) == 1 || quiet {
-        time.Sleep(100 * time.Millisecond) // Delay for 0.1 second
+        time.Sleep(100 * time.Millisecond) // Short delay
         customHelp()
         return
     }
 
-    // Validate inputs
+  
     if url == "" && list == "" && jsFile == "" {
         if isInputFromStdin() {
             processInputs("", "", output, regex, cookies, proxy, threads)
@@ -160,59 +161,60 @@ func main() {
         os.Exit(1)
     }
 
-    // Handle quiet mode
+
     if !quiet {
-        time.Sleep(100 * time.Millisecond) // Delay for 0.1 second
+        time.Sleep(100 * time.Millisecond) // Short delay
         fmt.Println(asciiArt)
     }
 
-    // Set color variables based on `-nc` flag
+
     if quiet {
         disableColors()
     }
 
-    // Process the JavaScript file if provided
+
     if jsFile != "" {
         processJSFile(jsFile, regex)
     }
 
-    // Proceed with the main functionality
+    
     processInputs(url, list, output, regex, cookies, proxy, threads)
 }
 
-// Custom help function to format usage output
+
 func customHelp() {
     fmt.Println(asciiArt)
     fmt.Println("Usage:")
-    fmt.Println("  -u, --url URL                  Input a URL")
-    fmt.Println("  -l, --list FILE.txt            Input a file with URLs (.txt)")
-    fmt.Println("  -f, --file FILE.js             Path to JavaScript file")
+    fmt.Println("  -u, --url URL                 Input a URL")
+    fmt.Println("  -l, --list FILE.txt           Input a file with URLs (.txt)")
+    fmt.Println("  -f, --file FILE.js            Path to JavaScript file")
     fmt.Println()
     fmt.Println("Options:")
-    fmt.Println("  -t, --threads INT              Number of concurrent threads (default: 5)")
-    fmt.Println("  -c, --cookies <cookies>        Add cookies for authenticated JS files")
-    fmt.Println("  -p, --proxy host:port          Set proxy (host:port) ,Burp 127.0.0.1:8080")
-    fmt.Println("  -nc, --no-color                Disable color output")
-    fmt.Println("  -q, --quiet                    Suppress ASCII art output")
-    fmt.Println("  -o, --output FILENAME.txt      Where to save the output file (default: output.txt)")
-    fmt.Println("  -r, --regex <pattern>          RegEx for filtering purposes against found endpoints")
-    fmt.Println("  -h, --help                     Display this help message")
+    fmt.Println("  -t, --threads INT             Number of concurrent threads (default: 5)")
+    fmt.Println("  -c, --cookies <cookies>       Cookies for authenticated JS files")
+    fmt.Println("  -p, --proxy host:port         Set proxy (host:port), e.g., 127.0.0.1:8080 for Burp Suite")
+    fmt.Println("  -nc, --no-color               Disable color output")
+    fmt.Println("  -q, --quiet                   Suppress ASCII art output")
+    fmt.Println("  -o, --output FILENAME.txt     Output file path (default: output.txt)")
+    fmt.Println("  -r, --regex <pattern>         RegEx for filtering endpoints")
+    fmt.Println("  -h, --help                    Display this help message")
 }
 
-// Helper function to check if there is input from stdin
+
+
 func isInputFromStdin() bool {
     fi, err := os.Stdin.Stat()
     return err == nil && fi.Mode()&os.ModeNamedPipe != 0
 }
 
-// Disables color output by setting color codes to empty strings
+
 func disableColors() {
     for k := range colors {
         colors[k] = ""
     }
 }
 
-// Processes a JS file and searches for sensitive data using a regex
+
 func processJSFile(jsFile, regex string) {
     if _, err := os.Stat(jsFile); os.IsNotExist(err) {
         fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
@@ -224,7 +226,7 @@ func processJSFile(jsFile, regex string) {
     }
 }
 
-// Manages concurrent processing of URLs or files and writes results to an output file if specified
+
 func processInputs(url, list, output, regex, cookie, proxy string, threads int) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
@@ -276,7 +278,7 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
     wg.Wait()
 }
 
-// Adds URLs to the channel based on input type
+
 func enqueueURLs(url, list string, urlChannel chan<- string, regex string) error {
     if list != "" {
         return enqueueFromFile(list, urlChannel)
@@ -320,7 +322,7 @@ func enqueueFromStdin(urlChannel chan<- string) {
     }
 }
 
-// Searches for sensitive data in the specified URL or file using regex
+
 func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[string][]string) {
     var client *http.Client
 
@@ -375,7 +377,7 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
     return urlStr, sensitiveData
 }
 
-// Extracts matches from body content using regex patterns and stores them in a map
+
 func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.Regexp) map[string][]string {
     matchesMap := make(map[string][]string)
 
