@@ -146,24 +146,21 @@ func main() {
 
 
     if len(os.Args) == 1 || quiet {
-        time.Sleep(100 * time.Millisecond) // Short delay
+        time.Sleep(100 * time.Millisecond)
         customHelp()
         return
     }
 
-  
-    if url == "" && list == "" && jsFile == "" {
-        if isInputFromStdin() {
-            processInputs("", "", output, regex, cookies, proxy, threads)
-            return
-        }
-        fmt.Println("Error: Either -u, -l, or -f must be provided.")
-        os.Exit(1)
+
+    if url == "" && list == "" && jsFile == "" && isInputFromStdin() {
+        fmt.Println("Reading from stdin...")
+        processStdin(output, regex, cookies, proxy, threads)
+        return
     }
 
 
     if !quiet {
-        time.Sleep(100 * time.Millisecond) // Short delay
+        time.Sleep(100 * time.Millisecond)
         fmt.Println(asciiArt)
     }
 
@@ -177,7 +174,7 @@ func main() {
         processJSFile(jsFile, regex)
     }
 
-    
+
     processInputs(url, list, output, regex, cookies, proxy, threads)
 }
 
@@ -200,7 +197,27 @@ func customHelp() {
     fmt.Println("  -h, --help                    Display this help message")
 }
 
+func processStdin(output, regex, cookies, proxy string, threads int) {
+    scanner := bufio.NewScanner(os.Stdin)
+    for scanner.Scan() {
+        line := scanner.Text()
+        fmt.Println("Processing line from stdin:", line)
 
+    }
+    if err := scanner.Err(); err != nil {
+        fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
+    }
+}
+
+
+func isInputFromStdin() bool {
+    fi, err := os.Stdin.Stat()
+    if err != nil {
+        fmt.Println("Error checking stdin:", err)
+        return false
+    }
+    return fi.Mode()&os.ModeCharDevice == 0
+}
 
 func isInputFromStdin() bool {
     fi, err := os.Stdin.Stat()
