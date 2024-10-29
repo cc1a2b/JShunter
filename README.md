@@ -56,3 +56,12 @@ go install -v github.com/cc1a2b/jshunter@latest
 
 Or download a [binary release](https://github.com/cc1a2b/jshunter/releases) for your platform.
 
+
+
+
+
+
+## License
+
+ffuf is released under MIT license. See [LICENSE](https://github.com/cc1a2b/jshunter/blob/master/LICENSE).
+
