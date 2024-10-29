@@ -191,7 +191,7 @@ func customHelp() {
     fmt.Println("Options:")
     fmt.Println("  -t, --threads INT              Number of concurrent threads (default: 5)")
     fmt.Println("  -c, --cookies <cookies>        Add cookies for authenticated JS files")
-    fmt.Println("  -p, --proxy host:port          Set proxy (host:port) , Burp 127.0.0.1:8080")
+    fmt.Println("  -p, --proxy host:port          Set proxy (host:port) ,Burp 127.0.0.1:8080")
     fmt.Println("  -nc, --no-color                Disable color output")
     fmt.Println("  -q, --quiet                    Suppress ASCII art output")
     fmt.Println("  -o, --output FILENAME.txt      Where to save the output file (default: output.txt)")
