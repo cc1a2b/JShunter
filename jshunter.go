@@ -153,11 +153,12 @@ func main() {
     // Validate inputs
     if url == "" && list == "" && jsFile == "" {
         if isInputFromStdin() {
-            processInputs("", "", output, regex, cookies, proxy, threads)
-            return
+            // Process input from stdin
+            enqueueFromStdin(urlChannel)
+        } else {
+            fmt.Println("Error: Either -u, -l, or input from stdin must be provided.")
+            os.Exit(1)
         }
-        fmt.Println("Error: Either -u, -l, or -f must be provided.")
-        os.Exit(1)
     }
 
     // Handle quiet mode
@@ -325,6 +326,7 @@ func enqueueFromStdin(urlChannel chan<- string) {
     if err := scanner.Err(); err != nil {
         fmt.Printf("Error reading from stdin: %v\n", err)
     }
+    close(urlChannel) // Close channel after reading from stdin
 }
 
 
