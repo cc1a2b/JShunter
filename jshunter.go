@@ -145,20 +145,14 @@ func main() {
     }
 
 
-    if len(os.Args) == 1 || quiet {
-        time.Sleep(100 * time.Millisecond)
-        customHelp()
-        return
-    }
-
 
     if url == "" && list == "" && jsFile == "" {
         if isInputFromStdin() {
             scanner := bufio.NewScanner(os.Stdin)
             for scanner.Scan() {
                 inputURL := scanner.Text()
-                // Process each input URL
-                processInputs(inputURL, "", output, regex, cookies, proxy, threads)
+                
+                processInputs(inputURL, list, output, regex, cookies, proxy, threads)
             }
             if err := scanner.Err(); err != nil {
                 fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
@@ -227,9 +221,8 @@ func isInputFromStdin() bool {
         fmt.Println("Error checking stdin:", err)
         return false
     }
-    return fi.Mode()&os.ModeCharDevice == 0
+    return fi.Mode()&os.ModeCharDevice == 0 // Check if it's not a character device
 }
-
 
 func disableColors() {
     for k := range colors {
