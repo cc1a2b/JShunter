@@ -15,7 +15,7 @@
 To use jshunter, run the following command:
 
 ```
-▶ go run jshunter.go -u "https://khadamati.moe.gov.sa/scripts/javascript.js"
+▶ go run jshunter.go -u "https://example.com/javascript.js"
 ```
 
 This command will analyze the specified JavaScript file and output the results to the console.
