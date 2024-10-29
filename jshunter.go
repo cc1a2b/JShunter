@@ -92,8 +92,8 @@ var (
 	"segment_write_key":             regexp.MustCompile(`sk_[A-Za-z0-9]{32}`),
 	"tiktok_access_token":           regexp.MustCompile(`tiktok_access_token=[a-zA-Z0-9_]+`),
 	"slack_client_secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
-    "phone_number":                  regexp.MustCompile(`^\+\d{9,14}$`),
-    "email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
+        "phone_number":                  regexp.MustCompile(`^\+\d{9,14}$`),
+        "email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
     }
 
     asciiArt = `
@@ -102,7 +102,7 @@ var (
     / // /\ \/ _ \/ // / _ \/ __/ -_) __/
     \___/___/_//_/\_,_/_//_/\__/\__/_/  
 
-                            Created by cc1a2b
+     v0.1                         Created by cc1a2b
     `
 )
 
@@ -184,17 +184,17 @@ func main() {
 func customHelp() {
     fmt.Println(asciiArt)
     fmt.Println("Usage:")
-    fmt.Println("  -u, --url <URL>              Input a URL")
-    fmt.Println("  -l, --list <file>            Input a file with URLs (.txt)")
-    fmt.Println("  -f, --file <file>            Path to JavaScript file")
+    fmt.Println("  -u, --url URL              Input a URL")
+    fmt.Println("  -l, --list FILE.txt            Input a file with URLs (.txt)")
+    fmt.Println("  -f, --file FILE.js            Path to JavaScript file")
     fmt.Println()
     fmt.Println("Options:")
-    fmt.Println("  -t, --threads <number>       Number of concurrent threads (default: 5)")
+    fmt.Println("  -t, --threads INT       Number of concurrent threads (default: 5)")
     fmt.Println("  -c, --cookies <cookies>      Add cookies for authenticated JS files")
-    fmt.Println("  -p, --proxy <host:port>      Set proxy (host:port)")
+    fmt.Println("  -p, --proxy host:port        Set proxy (host:port) , Burp 127.0.0.1:8080")
     fmt.Println("  -nc, --no-color              Disable color output")
     fmt.Println("  -q, --quiet                  Suppress ASCII art output")
-    fmt.Println("  -o, --output <file>          Where to save the output file (default: output.txt)")
+    fmt.Println("  -o, --output FILENAME.txt          Where to save the output file (default: output.txt)")
     fmt.Println("  -r, --regex <pattern>        RegEx for filtering purposes against found endpoints")
     fmt.Println("  -h, --help                   Display this help message")
 }
