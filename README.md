@@ -15,7 +15,19 @@
 To use jshunter, run the following command:
 
 ```
-▶ go run jshunter.go -u "https://example.com/javascript.js"
+cat urls.txt | grep "\.js" | jshunter
+```
+or
+```
+jshunter -u "https://example.com/javascript.js"
+```
+or
+```
+jshunter -l jsurls.txt
+```
+or
+```
+jshunter -f javascript.js
 ```
 
 This command will analyze the specified JavaScript file and output the results to the console.
