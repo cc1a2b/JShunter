@@ -442,10 +442,10 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
     }
 
     if len(matchesMap) > 0 {
-        fmt.Printf("[%sFOUND%s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
+        fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
         for name, matches := range matchesMap {
             for _, match := range matches {
-                fmt.Printf("%s ==>> %s\n", name, match)
+                fmt.Printf("%s ==> %s\n", name, match)
             }
         }
     } else {
