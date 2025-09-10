@@ -1,36 +1,13 @@
 # jshunter
 
-**jshunter** is a command-line tool designed for analyzing JavaScript files and extracting endpoints. This tool specializes in identifying sensitive data, such as API endpoints and potential security vulnerabilities, making it an essential resource for developers, bug bounty and security researchers.
-
-## Features
-
-- **Endpoint Extraction**: Automatically scans JavaScript files for URLs and API endpoints, allowing users to quickly identify potential points of interest.
-- **Sensitive Data Detection**: The tool analyzes the JavaScript code to uncover hard-coded secrets, API keys, and other sensitive information that could lead to security breaches.
-- **Customizable Options**: Users can specify various parameters, such as the number of threads for concurrent processing, cookies for authenticated sessions, and proxy settings for network configurations.
-- **Flexible Input**: Supports input from single URLs, lists of URLs from text files, and direct JavaScript file paths, providing flexibility based on user needs.
-- **Output Options**: Results can be saved to a specified output file, enabling easy access to the data extracted during the analysis.
-
-![image](https://github.com/user-attachments/assets/563a36f0-3d68-4870-9f4a-4342aea2fa5f)
-
+jshunter is a command-line tool designed for analyzing JavaScript files and extracting endpoints.
 
 ## Usage Example
 
 To use jshunter, run the following command:
 
 ```
-cat urls.txt | grep "\.js" | jshunter
-```
-or
-```
-jshunter -u "https://example.com/javascript.js"
-```
-or
-```
-jshunter -l jsurls.txt
-```
-or
-```
-jshunter -f javascript.js
+▶ go run jshunter.go -u "https://khadamati.moe.gov.sa/scripts/javascript.js"
 ```
 
 This command will analyze the specified JavaScript file and output the results to the console.
@@ -58,17 +35,4 @@ go install -v github.com/cc1a2b/jshunter@latest
 ```
 
 Or download a [binary release](https://github.com/cc1a2b/jshunter/releases) for your platform.
-
-
-
-
-## License
-
-JShunter is released under MIT license. See [LICENSE](https://github.com/cc1a2b/jshunter/blob/master/LICENSE).
-
-
-
-
-
-<a href="https://www.buymeacoffee.com/cc1a2b" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 
