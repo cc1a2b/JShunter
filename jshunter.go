@@ -2,6 +2,8 @@ package main
 
 import (
     "bufio"
+    "crypto/tls"
+    "encoding/json"
     "flag"
     "fmt"
     "io/ioutil"
@@ -15,20 +17,23 @@ import (
 )
 
 
-var colors = map[string]string{
-    "RED":    "\033[0;31m",
-    "GREEN":  "\033[0;32m",
-    "BLUE":   "\033[0;34m",
-    "YELLOW": "\033[0;33m",
-    "CYAN":   "\033[0;36m",
-    "PURPLE": "\033[0;35m",
-    "NC":     "\033[0m",
-}
+var (
+    version = "v0.1"
+    colors = map[string]string{
+        "RED":    "\033[0;31m",
+        "GREEN":  "\033[0;32m",
+        "BLUE":   "\033[0;34m",
+        "YELLOW": "\033[0;33m",
+        "CYAN":   "\033[0;36m",
+        "PURPLE": "\033[0;35m",
+        "NC":     "\033[0m",
+    }
+)
 
 
 
 var (
-    //regex patterns
+    //regex-cc1a2b
     regexPatterns = map[string]*regexp.Regexp{
 	"google_api":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
 	"firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}`),
@@ -131,16 +136,15 @@ var (
     / // /\ \/ _ \/ // / _ \/ __/ -_) __/
     \___/___/_//_/\_,_/_//_/\__/\__/_/  
 
-     v0.1                         Created by cc1a2b
+     ` + version + `                         Created by cc1a2b
     `
 )
 
 func main() {
-    // Define command-line
     var (
         url, list, jsFile, output, regex, cookies, proxy string
         threads                                           int
-        quiet, help                                       bool
+        quiet, help, update, extractEndpoints, skipTLS    bool
     )
 
 
@@ -150,8 +154,8 @@ func main() {
     flag.StringVar(&list, "list", "", "Input a file with URLs (.txt)")
     flag.StringVar(&jsFile, "f", "", "Path to JavaScript file")
     flag.StringVar(&jsFile, "file", "", "Path to JavaScript file")
-    flag.StringVar(&output, "o", "output.txt", "Output file path (default: output.txt)")
-    flag.StringVar(&output, "output", "output.txt", "Output file path (default: output.txt)")
+    flag.StringVar(&output, "o", "", "Output file path")
+    flag.StringVar(&output, "output", "", "Output file path")
     flag.StringVar(&regex, "r", "", "RegEx for filtering endpoints")
     flag.StringVar(&regex, "regex", "", "RegEx for filtering endpoints")
     flag.StringVar(&cookies, "c", "", "Cookies for authenticated JS files")
@@ -164,12 +168,21 @@ func main() {
     flag.BoolVar(&quiet, "quiet", false, "Quiet mode: suppress ASCII art output")
     flag.BoolVar(&help, "h", false, "Display help message")
     flag.BoolVar(&help, "help", false, "Display help message")
+    flag.BoolVar(&update, "update", false, "Update the tool with latest patterns")
+    flag.BoolVar(&update, "up", false, "Update the tool to latest version")
+    flag.BoolVar(&extractEndpoints, "ep", false, "Extract endpoints from JavaScript files")
+    flag.BoolVar(&skipTLS, "skip-tls", false, "Skip TLS certificate verification")
 
 
     flag.Parse()
 
     if help {
         customHelp()
+        return
+    }
+
+    if update {
+        updateTool()
         return
     }
 
@@ -181,7 +194,11 @@ func main() {
             for scanner.Scan() {
                 inputURL := scanner.Text()
                 
-                processInputs(inputURL, list, output, regex, cookies, proxy, threads)
+                if extractEndpoints {
+                    processInputsForEndpoints(inputURL, list, output, regex, cookies, proxy, threads, skipTLS)
+                } else {
+                    processInputs(inputURL, list, output, regex, cookies, proxy, threads)
+                }
             }
             if err := scanner.Err(); err != nil {
                 fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
@@ -205,11 +222,19 @@ func main() {
 
 
     if jsFile != "" {
-        processJSFile(jsFile, regex)
+        if extractEndpoints {
+            processJSFileForEndpoints(jsFile, regex, output)
+        } else {
+            processJSFile(jsFile, regex)
+        }
+        return 
     }
 
-
-    processInputs(url, list, output, regex, cookies, proxy, threads)
+    if extractEndpoints && (url != "" || list != "") {
+        processInputsForEndpoints(url, list, output, regex, cookies, proxy, threads, skipTLS)
+    } else {
+        processInputs(url, list, output, regex, cookies, proxy, threads)
+    }
 }
 
 
@@ -226,8 +251,11 @@ func customHelp() {
     fmt.Println("  -p, --proxy host:port         Set proxy (host:port), e.g., 127.0.0.1:8080 for Burp Suite")
     fmt.Println("  -nc, --no-color               Disable color output")
     fmt.Println("  -q, --quiet                   Suppress ASCII art output")
-    fmt.Println("  -o, --output FILENAME.txt     Output file path (default: output.txt)")
+    fmt.Println("  -o, --output FILENAME.txt     Output file path")
     fmt.Println("  -r, --regex <pattern>         RegEx for filtering endpoints")
+    fmt.Println("  --update, --up                Update the tool to latest version")
+    fmt.Println("  --ep                          Extract endpoints from JavaScript files")
+    fmt.Println("  --skip-tls                    Skip TLS certificate verification")
     fmt.Println("  -h, --help                    Display this help message")
 }
 
@@ -250,7 +278,7 @@ func isInputFromStdin() bool {
         fmt.Println("Error checking stdin:", err)
         return false
     }
-    return fi.Mode()&os.ModeCharDevice == 0 // Check if it's not a character device
+    return fi.Mode()&os.ModeCharDevice == 0 
 }
 
 func disableColors() {
@@ -447,4 +475,537 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
     }
 
     return matchesMap
+}
+
+func updateTool() {
+    fmt.Printf("[%sINFO%s] Checking for updates...\n", colors["BLUE"], colors["NC"])
+    
+    currentVersion := version
+    
+    resp, err := http.Get("https://api.github.com/repos/cc1a2b/jshunter/releases/latest")
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to check for updates: %v\n", colors["RED"], colors["NC"], err)
+        fmt.Printf("[%sINFO%s] You can manually update from: https://github.com/cc1a2b/jshunter/releases\n", colors["YELLOW"], colors["NC"])
+        return
+    }
+    defer resp.Body.Close()
+    
+    if resp.StatusCode != 200 {
+        fmt.Printf("[%sERROR%s] Failed to fetch release information\n", colors["RED"], colors["NC"])
+        fmt.Printf("[%sINFO%s] You can manually update from: https://github.com/cc1a2b/jshunter/releases\n", colors["YELLOW"], colors["NC"])
+        return
+    }
+    
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to read response: %v\n", colors["RED"], colors["NC"], err)
+        return
+    }
+    
+    var release struct {
+        TagName string `json:"tag_name"`
+        Assets  []struct {
+            Name               string `json:"name"`
+            BrowserDownloadURL string `json:"browser_download_url"`
+        } `json:"assets"`
+    }
+    
+    err = json.Unmarshal(body, &release)
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to parse release information: %v\n", colors["RED"], colors["NC"], err)
+        return
+    }
+    
+    latestVersion := release.TagName
+    
+    if latestVersion == currentVersion {
+        fmt.Printf("[%sINFO%s] You are already running the latest version: %s\n", colors["GREEN"], colors["NC"], currentVersion)
+        return
+    }
+    
+    fmt.Printf("[%sINFO%s] New version available: %s (current: %s)\n", colors["YELLOW"], colors["NC"], latestVersion, currentVersion)
+    
+    var downloadURL string
+    var binaryName string
+    
+    
+    goos := "linux"
+    goarch := "amd64"
+    
+    binaryName = fmt.Sprintf("jshunter_%s_%s", goos, goarch)
+    
+    for _, asset := range release.Assets {
+        if strings.Contains(asset.Name, goos) && strings.Contains(asset.Name, goarch) {
+            downloadURL = asset.BrowserDownloadURL
+            binaryName = asset.Name
+            break
+        }
+    }
+    
+    if downloadURL == "" {
+        fmt.Printf("[%sERROR%s] No suitable binary found for your platform\n", colors["RED"], colors["NC"])
+        fmt.Printf("[%sINFO%s] Please download manually from: https://github.com/cc1a2b/jshunter/releases/tag/%s\n", colors["YELLOW"], colors["NC"], latestVersion)
+        return
+    }
+    
+    fmt.Printf("[%sINFO%s] Downloading %s...\n", colors["BLUE"], colors["NC"], binaryName)
+    
+    resp, err = http.Get(downloadURL)
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to download update: %v\n", colors["RED"], colors["NC"], err)
+        return
+    }
+    defer resp.Body.Close()
+    
+    if resp.StatusCode != 200 {
+        fmt.Printf("[%sERROR%s] Failed to download update (status: %d)\n", colors["RED"], colors["NC"], resp.StatusCode)
+        return
+    }
+    
+    binaryData, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to read binary data: %v\n", colors["RED"], colors["NC"], err)
+        return
+    }
+    
+    currentPath, err := os.Executable()
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to get current executable path: %v\n", colors["RED"], colors["NC"], err)
+        return
+    }
+    
+    backupPath := currentPath + ".backup"
+    err = os.Rename(currentPath, backupPath)
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to create backup: %v\n", colors["RED"], colors["NC"], err)
+        return
+    }
+    
+    err = ioutil.WriteFile(currentPath, binaryData, 0755)
+    if err != nil {
+        fmt.Printf("[%sERROR%s] Failed to write new binary: %v\n", colors["RED"], colors["NC"], err)
+        os.Rename(backupPath, currentPath)
+        return
+    }
+    
+    os.Remove(backupPath)
+    
+    fmt.Printf("[%sSUCCESS%s] Successfully updated to %s!\n", colors["GREEN"], colors["NC"], latestVersion)
+    fmt.Printf("[%sINFO%s] Restart the tool to use the new version.\n", colors["BLUE"], colors["NC"])
+}
+
+func processJSFileForEndpoints(jsFile, regex, output string) {
+    if _, err := os.Stat(jsFile); os.IsNotExist(err) {
+        fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
+        return
+    } else if err != nil {
+        fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
+        return
+    }
+    
+    endpoints := extractEndpointsFromFile(jsFile, regex)
+    
+    if output != "" {
+        writeEndpointsToFile(endpoints, output, jsFile)
+    } else {
+        displayEndpoints(endpoints, jsFile)
+    }
+}
+
+func processInputsForEndpoints(url, list, output, regex, cookie, proxy string, threads int, skipTLS bool) {
+    var wg sync.WaitGroup
+    urlChannel := make(chan string)
+    
+    var fileWriter *os.File
+    if output != "" {
+        var err error
+        fileWriter, err = os.Create(output)
+        if err != nil {
+            fmt.Printf("Error creating output file: %v\n", err)
+            return
+        }
+        defer fileWriter.Close()
+    }
+    
+    for i := 0; i < threads; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for u := range urlChannel {
+                endpoints := extractEndpointsFromURL(u, regex, cookie, proxy, skipTLS)
+                
+                if fileWriter != nil {
+                    fmt.Fprintf(fileWriter, "URL: %s\n", u)
+                    for _, endpoint := range endpoints {
+                        fmt.Fprintf(fileWriter, "ENDPOINT: %s\n", endpoint)
+                    }
+                    fmt.Fprintln(fileWriter, "")
+                } else {
+                    for _, endpoint := range endpoints {
+                        fmt.Println(endpoint)
+                    }
+                }
+            }
+        }()
+    }
+    
+    if err := enqueueURLs(url, list, urlChannel, regex); err != nil {
+        fmt.Printf("Error in input processing: %v\n", err)
+        close(urlChannel)
+        return
+    }
+    
+    close(urlChannel)
+    wg.Wait()
+}
+
+func extractEndpointsFromFile(filePath, regex string) []string {
+    body, err := ioutil.ReadFile(filePath)
+    if err != nil {
+        fmt.Printf("Error reading file %s: %v\n", filePath, err)
+        return nil
+    }
+    
+    return extractEndpointsFromContent(string(body), regex, "")
+}
+
+func extractEndpointsFromURL(urlStr, regex, cookie, proxy string, skipTLS bool) []string {
+    var client *http.Client
+    
+    transport := &http.Transport{}
+    
+    if skipTLS {
+        transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    }
+    
+    if proxy != "" {
+        proxyURL, err := url.Parse(proxy)
+        if err != nil {
+            return nil 
+        }
+        transport.Proxy = http.ProxyURL(proxyURL)
+    }
+    
+    client = &http.Client{Transport: transport}
+    
+    req, err := http.NewRequest("GET", urlStr, nil)
+    if err != nil {
+        return nil 
+    }
+    
+    if cookie != "" {
+        req.Header.Set("Cookie", cookie)
+    }
+    
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil 
+    }
+    defer resp.Body.Close()
+    
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return nil 
+    }
+    
+    parsedURL, err := url.Parse(urlStr)
+    if err != nil {
+        return nil
+    }
+    baseURL := parsedURL.Scheme + "://" + parsedURL.Host
+    
+    return extractEndpointsFromContent(string(body), regex, baseURL)
+}
+
+func extractEndpointsFromContent(content, regex, targetDomain string) []string {
+    var endpoints []string
+    var baseURLs []string
+
+    baseURLPatterns := map[string]*regexp.Regexp{
+        "base_url":        regexp.MustCompile(`baseURL\s*[:=]\s*["']([^"']*)["']`),
+        "api_base":        regexp.MustCompile(`apiBase\s*[:=]\s*["']([^"']*)["']`),
+        "api_url":         regexp.MustCompile(`API_URL\s*[:=]\s*["']([^"']*)["']`),
+        "server_url":      regexp.MustCompile(`SERVER_URL\s*[:=]\s*["']([^"']*)["']`),
+        "endpoint_base":   regexp.MustCompile(`endpointBase\s*[:=]\s*["']([^"']*)["']`),
+    }
+    
+    for _, pattern := range baseURLPatterns {
+        matches := pattern.FindAllStringSubmatch(content, -1)
+        for _, match := range matches {
+            if len(match) > 1 {
+                baseURL := strings.Trim(match[1], `"'`)
+                if baseURL != "" && !contains(baseURLs, baseURL) {
+                    baseURLs = append(baseURLs, baseURL)
+                }
+            }
+        }
+    }
+    
+    endpointPatterns := map[string]*regexp.Regexp{
+        "ajax_url":        regexp.MustCompile(`\.ajax\s*\(\s*["']([^"']*)["']`),
+        "fetch_url":       regexp.MustCompile(`fetch\s*\(\s*["']([^"']*)["']`),
+        "xhr_url":         regexp.MustCompile(`\.open\s*\(\s*["'][^"']*["']\s*,\s*["']([^"']*)["']`),
+        "axios_url":       regexp.MustCompile(`axios\.[a-z]+\s*\(\s*["']([^"']*)["']`),
+        "request_url":     regexp.MustCompile(`request\.[a-z]+\s*\(\s*["']([^"']*)["']`),
+        "api_endpoint":    regexp.MustCompile(`["'](/api/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%\-]*)["']`),
+        "rest_endpoint":   regexp.MustCompile(`["'](/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%\-]*)["']`),
+        "graphql_endpoint": regexp.MustCompile(`["'](/graphql[^"']*)["']`),
+    }
+    
+    var relativeEndpoints []string
+    for _, pattern := range endpointPatterns {
+        matches := pattern.FindAllStringSubmatch(content, -1)
+        for _, match := range matches {
+            if len(match) > 1 {
+                endpoint := strings.Trim(match[1], `"'`)
+                if endpoint != "" && !contains(relativeEndpoints, endpoint) {
+                    endpoint = cleanEndpoint(endpoint)
+                    if isValidEndpoint(endpoint) {
+                        relativeEndpoints = append(relativeEndpoints, endpoint)
+                    }
+                }
+            }
+        }
+    }
+    
+    fullURLPatterns := map[string]*regexp.Regexp{
+        "full_url":        regexp.MustCompile(`https?://[a-zA-Z0-9.-]+/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%\-]+`),
+        "websocket_url":   regexp.MustCompile(`wss?://[a-zA-Z0-9.-]+/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%\-]+`),
+    }
+    
+    for _, pattern := range fullURLPatterns {
+        matches := pattern.FindAllString(content, -1)
+        for _, match := range matches {
+            match = cleanEndpoint(match)
+            if match != "" && !contains(endpoints, match) && isValidEndpoint(match) {
+                endpoints = append(endpoints, match)
+            }
+        }
+    }
+    
+    for _, baseURL := range baseURLs {
+        baseURL = strings.TrimRight(baseURL, "/")
+        for _, relEndpoint := range relativeEndpoints {
+            if strings.HasPrefix(relEndpoint, "/") {
+                fullEndpoint := baseURL + relEndpoint
+                if !contains(endpoints, fullEndpoint) {
+                    endpoints = append(endpoints, fullEndpoint)
+                }
+            }
+        }
+    }
+    
+    if targetDomain != "" {
+        if !strings.HasPrefix(targetDomain, "http") {
+            targetDomain = "https://" + targetDomain
+        }
+        targetDomain = strings.TrimRight(targetDomain, "/")
+        
+        for _, relEndpoint := range relativeEndpoints {
+            fullEndpoint := targetDomain + relEndpoint
+            if !contains(endpoints, fullEndpoint) {
+                endpoints = append(endpoints, fullEndpoint)
+            }
+        }
+    } else {
+        if len(baseURLs) > 0 {
+            baseURL := strings.TrimRight(baseURLs[0], "/")
+            for _, relEndpoint := range relativeEndpoints {
+                fullEndpoint := baseURL + relEndpoint
+                if !contains(endpoints, fullEndpoint) {
+                    endpoints = append(endpoints, fullEndpoint)
+                }
+            }
+        } else {
+            for _, relEndpoint := range relativeEndpoints {
+                if !contains(endpoints, relEndpoint) {
+                    endpoints = append(endpoints, relEndpoint)
+                }
+            }
+        }
+    }
+    
+    if regex != "" {
+        filteredEndpoints := []string{}
+        customPattern, err := regexp.Compile(regex)
+        if err != nil {
+            fmt.Printf("Invalid regex pattern: %v\n", err)
+            return endpoints
+        }
+        
+        for _, endpoint := range endpoints {
+            if customPattern.MatchString(endpoint) {
+                filteredEndpoints = append(filteredEndpoints, endpoint)
+            }
+        }
+        endpoints = filteredEndpoints
+    }
+    
+    return endpoints
+}
+
+
+func cleanEndpoint(endpoint string) string {
+
+    endpoint = strings.Trim(endpoint, `"'`)
+    endpoint = strings.TrimSpace(endpoint)
+    
+    endpoint = strings.TrimRight(endpoint, ";,)")
+    endpoint = strings.TrimRight(endpoint, `"'`)
+    
+
+    if strings.Contains(endpoint, "${") {
+        return ""
+    }
+    
+
+    endpoint = strings.Trim(endpoint, `"'`)
+    
+
+    endpoint = strings.TrimRight(endpoint, ";,)")
+    endpoint = strings.TrimRight(endpoint, `"'`)
+    
+    return endpoint
+}
+
+
+func isValidEndpoint(endpoint string) bool {
+   
+    if endpoint == "" {
+        return false
+    }
+    
+    
+    if strings.Contains(endpoint, "${") || strings.Contains(endpoint, "+") {
+        return false
+    }
+    
+   
+    if len(endpoint) < 2 {
+        return false
+    }
+    
+    
+    skipWords := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "true", "false", "null", "undefined"}
+    for _, word := range skipWords {
+        if endpoint == word {
+            return false
+        }
+    }
+    
+  
+    if strings.HasSuffix(endpoint, "'") || strings.HasSuffix(endpoint, "\"") || 
+       strings.HasSuffix(endpoint, ";") || strings.HasSuffix(endpoint, ")") ||
+       strings.HasSuffix(endpoint, "';") || strings.HasSuffix(endpoint, "\";") ||
+       strings.HasSuffix(endpoint, "')") || strings.HasSuffix(endpoint, "\")") {
+        return false
+    }
+    
+    
+    if strings.Contains(endpoint, "';") || strings.Contains(endpoint, "\";") ||
+       strings.Contains(endpoint, "')") || strings.Contains(endpoint, "\")") {
+        return false
+    }
+    
+
+    if strings.Contains(endpoint, ",") || strings.Contains(endpoint, "(") || 
+       strings.Contains(endpoint, "Y=") || strings.Contains(endpoint, "&") {
+        return false
+    }
+    
+
+    if strings.HasSuffix(endpoint, "/a") || strings.HasSuffix(endpoint, "/g") ||
+       strings.HasSuffix(endpoint, "//") || strings.HasSuffix(endpoint, "/") {
+        return false
+    }
+    
+
+    if !strings.HasPrefix(endpoint, "/") && !strings.HasPrefix(endpoint, "http") {
+        return false
+    }
+    
+
+    externalDomains := []string{
+        "fonts.googleapis.com",
+        "fonts.gstatic.com", 
+        "www.googletagmanager.com",
+        "www.google-analytics.com",
+        "static.hotjar.com",
+        "www.hotjar.com",
+        "cdnjs.cloudflare.com",
+        "unpkg.com",
+        "cdn.jsdelivr.net",
+        "ajax.googleapis.com",
+        "code.jquery.com",
+        "maxcdn.bootstrapcdn.com",
+        "stackpath.bootstrapcdn.com",
+        "www.opensource.org",
+        "flowplayer.org",
+        "docs.jquery.com",
+        "www.adobe.com",
+        "www.w3.org",
+        "jquery.com",
+        "github.com",
+        "raw.githubusercontent.com",
+    }
+    
+    for _, domain := range externalDomains {
+        if strings.Contains(endpoint, domain) {
+            return false
+        }
+    }
+    
+   
+    if strings.HasPrefix(endpoint, "http") {
+
+        parts := strings.Split(endpoint, "/")
+        if len(parts) < 4 || parts[3] == "" {
+            return false
+        }
+        
+
+        if strings.Contains(endpoint, "?family=") || strings.Contains(endpoint, "?id=") ||
+           strings.Contains(endpoint, "&display=") || strings.Contains(endpoint, "&version=") {
+            return false
+        }
+    }
+    
+    return true
+}
+
+
+func displayEndpoints(endpoints []string, source string) {
+    if len(endpoints) > 0 {
+        for _, endpoint := range endpoints {
+            fmt.Println(endpoint)
+        }
+    }
+}
+
+
+func writeEndpointsToFile(endpoints []string, outputFile, source string) {
+    file, err := os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        fmt.Printf("Error opening output file: %v\n", err)
+        return
+    }
+    defer file.Close()
+    
+    fmt.Fprintf(file, "SOURCE: %s\n", source)
+    for _, endpoint := range endpoints {
+        fmt.Fprintf(file, "ENDPOINT: %s\n", endpoint)
+    }
+    fmt.Fprintln(file, "")
+    
+    fmt.Printf("[%sSUCCESS%s] Endpoints saved to: %s\n", colors["GREEN"], colors["NC"], outputFile)
+}
+
+
+func contains(slice []string, item string) bool {
+    for _, s := range slice {
+        if s == item {
+            return true
+        }
+    }
+    return false
 }
