@@ -10,7 +10,8 @@
 - **Flexible Input**: Supports input from single URLs, lists of URLs from text files, and direct JavaScript file paths, providing flexibility based on user needs.
 - **Output Options**: Results can be saved to a specified output file, enabling easy access to the data extracted during the analysis.
 
-![image](https://github.com/user-attachments/assets/563a36f0-3d68-4870-9f4a-4342aea2fa5f)
+<img width="2070" height="1134" alt="image" src="https://github.com/user-attachments/assets/e5053a75-58f9-4027-8d21-9525cc5e3b1f" />
+
 
 
 ## Usage Example
