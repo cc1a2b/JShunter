@@ -6,11 +6,13 @@ import (
     "encoding/json"
     "flag"
     "fmt"
+    "io"
     "io/ioutil"
     "net/http"
     "net/url"
     "os"
     "regexp"
+    "runtime"
     "strings"
     "sync"
     "time"
@@ -18,7 +20,7 @@ import (
 
 
 var (
-    version = "v0.4"
+    version = "v0.3"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -139,6 +141,28 @@ var (
      ` + version + `                         Created by cc1a2b
     `
 )
+
+// progressReader wraps an io.Reader to track download progress
+type progressReader struct {
+    reader     io.Reader
+    total      int64
+    current    int64
+    lastUpdate time.Time
+    onProgress func(int64)
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+    n, err := pr.reader.Read(p)
+    pr.current += int64(n)
+    
+    // Only update progress every 100ms to avoid too many updates
+    if pr.onProgress != nil && time.Since(pr.lastUpdate) > 100*time.Millisecond {
+        pr.onProgress(pr.current)
+        pr.lastUpdate = time.Now()
+    }
+    
+    return n, err
+}
 
 func main() {
     var (
@@ -656,11 +680,12 @@ func updateTool() {
     var binaryName string
     
     
-    goos := "linux"
-    goarch := "amd64"
+    goos := runtime.GOOS
+    goarch := runtime.GOARCH
     
     binaryName = fmt.Sprintf("jshunter_%s_%s", goos, goarch)
     
+    // First try to find platform-specific binary
     for _, asset := range release.Assets {
         if strings.Contains(asset.Name, goos) && strings.Contains(asset.Name, goarch) {
             downloadURL = asset.BrowserDownloadURL
@@ -669,13 +694,22 @@ func updateTool() {
         }
     }
     
+    // If no platform-specific binary found, look for generic binary
     if downloadURL == "" {
-        fmt.Printf("[%sERROR%s] No suitable binary found for your platform\n", colors["RED"], colors["NC"])
+        for _, asset := range release.Assets {
+            if asset.Name == "jshunter" || strings.HasPrefix(asset.Name, "jshunter") {
+                downloadURL = asset.BrowserDownloadURL
+                binaryName = asset.Name
+                break
+            }
+        }
+    }
+    
+    if downloadURL == "" {
+        fmt.Printf("[%sERROR%s] No suitable binary found for your platform (%s_%s)\n", colors["RED"], colors["NC"], goos, goarch)
         fmt.Printf("[%sINFO%s] Please download manually from: https://github.com/cc1a2b/jshunter/releases/tag/%s\n", colors["YELLOW"], colors["NC"], latestVersion)
         return
     }
-    
-    fmt.Printf("[%sINFO%s] Downloading %s...\n", colors["BLUE"], colors["NC"], binaryName)
     
     resp, err = http.Get(downloadURL)
     if err != nil {
@@ -689,7 +723,62 @@ func updateTool() {
         return
     }
     
-    binaryData, err := ioutil.ReadAll(resp.Body)
+    // Get content length for progress bar
+    contentLength := resp.ContentLength
+    if contentLength <= 0 {
+        contentLength = 0
+    }
+    
+    // Create smart loader
+    var binaryData []byte
+    if contentLength > 0 {
+        binaryData = make([]byte, 0, contentLength)
+        reader := &progressReader{
+            reader: resp.Body,
+            total:  contentLength,
+            onProgress: func(current int64) {
+                // Smart progress bar like httpx
+                progress := float64(current) / float64(contentLength)
+                barWidth := 20
+                filled := int(progress * float64(barWidth))
+                
+                bar := strings.Repeat("#", filled) + strings.Repeat(" ", barWidth-filled)
+                percentage := int(progress * 100)
+                
+                // Format file size
+                currentMB := float64(current) / (1024 * 1024)
+                totalMB := float64(contentLength) / (1024 * 1024)
+                
+                fmt.Printf("\r[%sINFO%s] Downloading %s [%s%s%s] %d%% (%.1f/%.1f MB)", 
+                    colors["BLUE"], colors["NC"], binaryName,
+                    colors["BLUE"], bar, colors["NC"], 
+                    percentage, currentMB, totalMB)
+            },
+        }
+        
+        binaryData, err = ioutil.ReadAll(reader)
+        
+        // Final progress update to show 100%
+        if err == nil {
+            progress := float64(reader.total) / float64(reader.total)
+            barWidth := 20
+            filled := int(progress * float64(barWidth))
+            bar := strings.Repeat("#", filled) + strings.Repeat(" ", barWidth-filled)
+            percentage := int(progress * 100)
+            currentMB := float64(reader.total) / (1024 * 1024)
+            totalMB := float64(reader.total) / (1024 * 1024)
+            
+            fmt.Printf("\r[%sINFO%s] Downloading %s [%s%s%s] %d%% (%.1f/%.1f MB)\n", 
+                colors["BLUE"], colors["NC"], binaryName,
+                colors["BLUE"], bar, colors["NC"], 
+                percentage, currentMB, totalMB)
+        } else {
+            fmt.Println() // New line after loader
+        }
+    } else {
+        binaryData, err = ioutil.ReadAll(resp.Body)
+    }
+    
     if err != nil {
         fmt.Printf("[%sERROR%s] Failed to read binary data: %v\n", colors["RED"], colors["NC"], err)
         return
