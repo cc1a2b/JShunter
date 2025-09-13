@@ -18,7 +18,7 @@ import (
 
 
 var (
-    version = "v0.3"
+    version = "v0.4"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
