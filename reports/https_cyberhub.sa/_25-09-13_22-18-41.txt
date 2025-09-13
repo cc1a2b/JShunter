@@ -1,0 +1,4 @@
+# Dirsearch started Sat Sep 13 22:19:01 2025 as: /home/cc1a2b/.local/bin/dirsearch -u https://cyberhub.sa
+
+301    98B   https://cyberhub.sa/%3f/    -> REDIRECTS TO: /
+404     0B   https://cyberhub.sa/.well-known/acme-challenge/dtfy
