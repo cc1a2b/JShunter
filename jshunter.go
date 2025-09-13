@@ -18,7 +18,7 @@ import (
 
 
 var (
-    version = "v0.2"
+    version = "v0.3"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -35,99 +35,99 @@ var (
 var (
     //regex-cc1a2b
     regexPatterns = map[string]*regexp.Regexp{
-	"google_api":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
-	"firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}`),
-	"google_captcha":                regexp.MustCompile(`6L[0-9A-Za-z-_]{38}|^6[0-9a-zA-Z_-]{39}$`),
-	"amazon_aws_access_key_id":      regexp.MustCompile(`A[SK]IA[0-9A-Z]{16}`),
-	"amazon_mws_auth_token":         regexp.MustCompile(`amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
-	"amazon_aws_url":                regexp.MustCompile(`s3\.amazonaws.com[/]+|[a-zA-Z0-9_-]*\.s3\.amazonaws.com`),
-	"amazon_aws_url2":               regexp.MustCompile(`([a-zA-Z0-9-._]+\.s3\.amazonaws\.com|s3://[a-zA-Z0-9-._]+|s3-[a-zA-Z0-9-._/]+|s3.amazonaws.com/[a-zA-Z0-9-._]+|s3.console.aws.amazon.com/s3/buckets/[a-zA-Z0-9-._]+)`),
-	"facebook__access_token":        regexp.MustCompile(`EAACEdEose0cBA[0-9A-Za-z]+`),
-	"authorization_basic":           regexp.MustCompile(`basic [a-zA-Z0-9=:_\+\/-]{5,100}`),
-	"authorization_bearer":          regexp.MustCompile(`bearer [a-zA-Z0-9_\-\.=:_\+\/]{5,100}`),
-        "authorization_api":             regexp.MustCompile(`(?i)\bapi(?:[_\s]*key|[\s]*[\=\:])\s*["']?[a-zA-Z0-9_\-]{5,100}\b`),
-	"twilio_api_key":                regexp.MustCompile(`SK[0-9a-fA-F]{32}`),
-	"twilio_account_sid":            regexp.MustCompile(`AC[a-zA-Z0-9_\-]{32}`),
-	"twilio_app_sid":                regexp.MustCompile(`AP[a-zA-Z0-9_\-]{32}`),
-	"paypal_braintre_access_token":  regexp.MustCompile(`access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}`),
-	"square_oauth_secret":           regexp.MustCompile(`sq0csp-[0-9A-Za-z\-_]{43}|sq0[a-z]{3}-[0-9A-Za-z\-_]{22,43}`),
-	"square_access_token":           regexp.MustCompile(`sqOatp-[0-9A-Za-z\-_]{22}|EAAA[a-zA-Z0-9]{60}`),
-	"stripe_standard_api":           regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
-	"stripe_restricted_api":         regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
-	"authorization_github_token":    regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36}\b`),
-	"github_access_token":           regexp.MustCompile(`[a-zA-Z0-9_-]*:[a-zA-Z0-9_\-]+@github\.com*`),
-	"rsa_private_key":               regexp.MustCompile(`-----BEGIN RSA PRIVATE KEY-----`),
-	"ssh_dsa_private_key":           regexp.MustCompile(`-----BEGIN DSA PRIVATE KEY-----`),
-	"ssh_dc_private_key":            regexp.MustCompile(`-----BEGIN EC PRIVATE KEY-----`),
-	"pgp_private_block":             regexp.MustCompile(`-----BEGIN PGP PRIVATE KEY BLOCK-----`),
-	"ssh_private_key":               regexp.MustCompile(`(?s)-----BEGIN OPENSSH PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END OPENSSH PRIVATE KEY-----`),
-	"json_web_token":                regexp.MustCompile(`ey[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*$`),
-        "putty_private_key":             regexp.MustCompile(`(?s)PuTTY-User-Key-File-2.*?-----END`),
-        "ssh2_encrypted_private_key":    regexp.MustCompile(`(?s)-----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END SSH2 ENCRYPTED PRIVATE KEY-----`),
-        "generic_private_key":           regexp.MustCompile(`(?s)-----BEGIN.*PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END.*PRIVATE KEY-----`),
-        "username_password_combo":       regexp.MustCompile(`(?i)^[a-z]+:\/\/[^\/]*:[^@]+@`),
-        "facebook_oauth":                regexp.MustCompile(`(?i)[fF][aA][cC][eE][bB][oO][oO][kK].*['\"]?[0-9a-f]{32}['\"]?`),
-        "twitter_oauth":                 regexp.MustCompile(`(?i)[tT][wW][iI][tT][tT][eE][rR].*['\"]?[0-9a-zA-Z]{35,44}['\"]?`),
-        "github_token":                  regexp.MustCompile(`(?i)[gG][iI][tT][hH][uU][bB].*['\"]?[0-9a-zA-Z]{35,40}['\"]?`),
-        "google_oauth_client_secret":    regexp.MustCompile(`\"client_secret\":\"[a-zA-Z0-9-_]{24}\"`),
-        "aws_api_key":                   regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
-	"slack_token":                   regexp.MustCompile(`\"api_token\":\"(xox[a-zA-Z]-[a-zA-Z0-9-]+)\"`),
-	"SSH_privKey":                   regexp.MustCompile(`([-]+BEGIN [^\s]+ PRIVATE KEY[-]+[\s]*[^-]*[-]+END [^\s]+ PRIVATE KEY[-]+)`),
-	"Heroku API KEY":                regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`),
-	"slack_webhook_url":             regexp.MustCompile(`https://hooks.slack.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`),
-	"heroku_api_key":                regexp.MustCompile(`[hH]eroku[a-zA-Z0-9]{32}`),
-	"dropbox_access_token":          regexp.MustCompile(`(?i)^sl\.[A-Za-z0-9_-]{16,50}$`),
-	"salesforce_access_token":       regexp.MustCompile(`00D[0-9A-Za-z]{15,18}![A-Za-z0-9]{40}`),
-	"twitter_bearer_token":          regexp.MustCompile(`(?i)^AAAAAAAAAAAAAAAAAAAAA[A-Za-z0-9]{30,45}$`),
-	"firebase_url":                  regexp.MustCompile(`https://[a-z0-9-]+\.firebaseio\.com`),
-	"pem_private_key":               regexp.MustCompile(`-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----`),
-	"google_cloud_sa_key":           regexp.MustCompile(`"type": "service_account"`),
-	"stripe_publishable_key":        regexp.MustCompile(`pk_live_[0-9a-zA-Z]{24}`),
-	"azure_storage_account_key":     regexp.MustCompile(`(?i)^[A-Za-z0-9]{44}=[A-Za-z0-9+/=]{0,43}$`),
-	"instagram_access_token":        regexp.MustCompile(`IGQV[A-Za-z0-9._-]{10,}`),
-	"stripe_test_publishable_key":   regexp.MustCompile(`pk_test_[0-9a-zA-Z]{24}`),
-	"stripe_test_secret_key":        regexp.MustCompile(`sk_test_[0-9a-zA-Z]{24}`),
-	"slack_bot_token":               regexp.MustCompile(`xoxb-[A-Za-z0-9-]{24,34}`),
-	"slack_user_token":              regexp.MustCompile(`xoxp-[A-Za-z0-9-]{24,34}`),
-        "google_gmail_api_key":          regexp.MustCompile(`AIza[0-9A-Za-z\\-_]{35}`),
-        "google_gmail_oauth":            regexp.MustCompile(`\b[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com\b`),
-        "google_oauth_access_token":     regexp.MustCompile(`ya29\.[0-9A-Za-z\\-_]+`),
-        "mailchimp_api_key":             regexp.MustCompile(`[0-9a-f]{32}-us[0-9]{1,2}`),
-        "mailgun_api_key":               regexp.MustCompile(`key-[0-9a-zA-Z]{32}`),
-        "google_drive_oauth":            regexp.MustCompile(`\b[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com\b`),
-        "paypal_braintree_access_token": regexp.MustCompile(`access_token\\$production\\$[0-9a-z]{16}\\$[0-9a-f]{32}`),
-        "picatic_api_key":               regexp.MustCompile(`sk_live_[0-9a-z]{32}`),
-        "stripe_api_key":                regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
-        "stripe_restricted_api_key":     regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
-        "square_access__token":          regexp.MustCompile(`sq0atp-[0-9A-Za-z\\-_]{22}`),
-        "square_oauth__secret":          regexp.MustCompile(`sq0csp-[0-9A-Za-z\\-_]{43}`),
-        "twitter_access_token":          regexp.MustCompile(`[tT][wW][iI][tT][tT][eE][rR].*[1-9][0-9]+-[0-9a-zA-Z]{40}`),
-	"heroku_api__key":               regexp.MustCompile(`(?i)[hH][eE][rR][oO][kK][uU].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}`),
-        "generic_api_key":               regexp.MustCompile(`(?i)[aA][pP][iI]_?[kK][eE][yY].*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
-        "generic_secret":                regexp.MustCompile(`(?i)[sS][eE][cC][rR][eE][tT].*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
-        "slack_webhook":                 regexp.MustCompile(`https://hooks[.]slack[.]com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}`),
-        "gcp_service_account":           regexp.MustCompile(`\"type\": \"service_account\"`),
-        "password_in_url":               regexp.MustCompile(`[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]`),
-	"discord_webhook_url":           regexp.MustCompile(`https://discord(?:app)?\.com/api/webhooks/[0-9]{18,20}/[A-Za-z0-9_-]{64,}`),
-	"discord_bot_token":             regexp.MustCompile(`[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}`),
-	"okta_api_token":                regexp.MustCompile(`00[a-zA-Z0-9]{30}\.[a-zA-Z0-9\-_]{30,}\.[a-zA-Z0-9\-_]{30,}`),
-	"sendgrid_api_key":              regexp.MustCompile(`SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}`),
-	"mapbox_access_token":           regexp.MustCompile(`pk\.[a-zA-Z0-9]{60}\.[a-zA-Z0-9]{22}`),
-	"gitlab_personal_access_token":  regexp.MustCompile(`glpat-[A-Za-z0-9\-]{20}`),
-	"datadog_api_key":               regexp.MustCompile(`ddapi_[a-zA-Z0-9]{32}`),
-	"shopify_access_token":          regexp.MustCompile(`shpat_[A-Za-z0-9]{32}`),
-        "atlassian_access_token":        regexp.MustCompile(`[a-zA-Z0-9]{20,}\.[a-zA-Z0-9_-]{6,}\.[a-zA-Z0-9_-]{25,}`),
-	"crowdstrike_api_key":           regexp.MustCompile(`(?i)^[A-Za-z0-9]{32}\.[A-Za-z0-9]{16}$`),
-	"quickbooks_api_key":            regexp.MustCompile(`A[0-9a-f]{32}`),
-	"cisco_api_key":                 regexp.MustCompile(`cisco[A-Za-z0-9]{30}`),
-	"cisco_access_token":            regexp.MustCompile(`access_token=\w+`),
-	"segment_write_key":             regexp.MustCompile(`sk_[A-Za-z0-9]{32}`),
-	"tiktok_access_token":           regexp.MustCompile(`tiktok_access_token=[a-zA-Z0-9_]+`),
-	"slack_client_secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
-        "phone_number":                  regexp.MustCompile(`^\+\d{9,14}$`),
-        "email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
-	"AliCloudAccessKey":		 regexp.MustCompile(`^LTAI[A-Za-z0-9]{12,20}$`),
-	"TencentCloudAccessKey":	 regexp.MustCompile(`^AKID[A-Za-z0-9]{13,20}$`),
+	"Google API":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
+	"Firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}(?:\s|$|[^A-Za-z0-9_-])`),
+	"Google Captcha":                regexp.MustCompile(`6L[0-9A-Za-z-_]{38}|^6[0-9a-zA-Z_-]{39}$`),
+	"Amazon Aws Access Key ID":      regexp.MustCompile(`A[SK]IA[0-9A-Z]{16}`),
+	"Amazon Mws Auth Token":         regexp.MustCompile(`amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
+	"Amazon Aws Url":                regexp.MustCompile(`s3\.amazonaws.com[/]+|[a-zA-Z0-9_-]*\.s3\.amazonaws.com`),
+	"Amazon Aws Url2":               regexp.MustCompile(`([a-zA-Z0-9-._]+\.s3\.amazonaws\.com|s3://[a-zA-Z0-9-._]+|s3-[a-zA-Z0-9-._/]+|s3.amazonaws.com/[a-zA-Z0-9-._]+|s3.console.aws.amazon.com/s3/buckets/[a-zA-Z0-9-._]+)`),
+	"Facebook Access Token":         regexp.MustCompile(`EAACEdEose0cBA[0-9A-Za-z]+`),
+	"Authorization Basic":           regexp.MustCompile(`(?i)\bauthorization\s*:\s*basic\s+[a-zA-Z0-9=:_\+\/-]{20,100}`),
+	"Authorization Bearer":          regexp.MustCompile(`(?i)\bauthorization\s*:\s*bearer\s+[a-zA-Z0-9_\-\.=:_\+\/]{20,100}`),
+    "Authorization Api":             regexp.MustCompile(`(?i)\bapi[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_\-]{20,100}["']?`),
+	"Twilio Api Key":                regexp.MustCompile(`SK[0-9a-fA-F]{32}`),
+	"Twilio Account Sid":            regexp.MustCompile(`(?i)\b(?:twilio|tw)\s*[_-]?account[_-]?sid\s*[:=]\s*["']?AC[a-zA-Z0-9_\-]{32}["']?`),
+	"Twilio App Sid":                regexp.MustCompile(`AP[a-zA-Z0-9_\-]{32}`),
+	"Paypal Braintre Access Token":  regexp.MustCompile(`access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}`),
+	"Square Oauth Secret":           regexp.MustCompile(`sq0csp-[0-9A-Za-z\-_]{43}|sq0[a-z]{3}-[0-9A-Za-z\-_]{22,43}`),
+	"Square Access Token":           regexp.MustCompile(`sqOatp-[0-9A-Za-z\-_]{22}|EAAA[a-zA-Z0-9]{60}`),
+	"Stripe Standard Api":           regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
+	"Stripe Restricted Api":         regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
+	"Authorization Github Token":    regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36}\b`),
+	"Github Access Token":           regexp.MustCompile(`[a-zA-Z0-9_-]*:[a-zA-Z0-9_\-]+@github\.com*`),
+	"Rsa Private Key":               regexp.MustCompile(`-----BEGIN RSA PRIVATE KEY-----`),
+	"Ssh Dsa Private Key":           regexp.MustCompile(`-----BEGIN DSA PRIVATE KEY-----`),
+	"Ssh Dc Private Key":            regexp.MustCompile(`-----BEGIN EC PRIVATE KEY-----`),
+	"Pgp Private Block":             regexp.MustCompile(`-----BEGIN PGP PRIVATE KEY BLOCK-----`),
+	"Ssh Private Key":               regexp.MustCompile(`(?s)-----BEGIN OPENSSH PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END OPENSSH PRIVATE KEY-----`),
+	"Json Web Token":                regexp.MustCompile(`ey[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*$`),
+    "Putty Private Key":             regexp.MustCompile(`(?s)PuTTY-User-Key-File-2.*?-----END`),
+    "Ssh2 Encrypted Private Key":    regexp.MustCompile(`(?s)-----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END SSH2 ENCRYPTED PRIVATE KEY-----`),
+    "Generic Private Key":           regexp.MustCompile(`(?s)-----BEGIN.*PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END.*PRIVATE KEY-----`),
+    "Username Password Combo":       regexp.MustCompile(`(?i)^[a-z]+:\/\/[^\/]*:[^@]+@`),
+    "Facebook Oauth":                regexp.MustCompile(`(?i)[fF][aA][cC][eE][bB][oO][oO][kK].*['\"]?[0-9a-f]{32}['\"]?`),
+    "Twitter Oauth":                 regexp.MustCompile(`(?i)\b(?:twitter|tw)\s*[_-]?oauth[_-]?token\s*[:=]\s*["']?[0-9a-zA-Z]{35,44}["']?`),
+    "Github Token":                  regexp.MustCompile(`(?i)\b(gh[pousr]_[0-9a-zA-Z]{36})\b`),
+    "Google Oauth Client Secret":    regexp.MustCompile(`\"client_secret\":\"[a-zA-Z0-9-_]{24}\"`),
+    "Aws Api Key":                   regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
+	"Slack Token":                   regexp.MustCompile(`\"api_token\":\"(xox[a-zA-Z]-[a-zA-Z0-9-]+)\"`),
+	"Ssh Priv Key":                  regexp.MustCompile(`([-]+BEGIN [^\s]+ PRIVATE KEY[-]+[\s]*[^-]*[-]+END [^\s]+ PRIVATE KEY[-]+)`),
+	"Heroku Api Key":                regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
+	"Slack Webhook Url":             regexp.MustCompile(`https://hooks.slack.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`),
+	"Heroku Api Key 2":              regexp.MustCompile(`[hH]eroku[a-zA-Z0-9]{32}`),
+	"Dropbox Access Token":          regexp.MustCompile(`(?i)^sl\.[A-Za-z0-9_-]{16,50}$`),
+	"Salesforce Access Token":       regexp.MustCompile(`00D[0-9A-Za-z]{15,18}![A-Za-z0-9]{40}`),
+	"Twitter Bearer Token":          regexp.MustCompile(`(?i)^AAAAAAAAAAAAAAAAAAAAA[A-Za-z0-9]{30,45}$`),
+	"Firebase Url":                  regexp.MustCompile(`https://[a-z0-9-]+\.firebaseio\.com`),
+	"Pem Private Key":               regexp.MustCompile(`-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----`),
+	"Google Cloud Sa Key":           regexp.MustCompile(`"type": "service_account"`),
+	"Stripe Publishable Key":        regexp.MustCompile(`pk_live_[0-9a-zA-Z]{24}`),
+	"Azure Storage Account Key":     regexp.MustCompile(`(?i)^[A-Za-z0-9]{44}=[A-Za-z0-9+/=]{0,43}$`),
+	"Instagram Access Token":        regexp.MustCompile(`IGQV[A-Za-z0-9._-]{10,}`),
+	"Stripe Test Publishable Key":   regexp.MustCompile(`pk_test_[0-9a-zA-Z]{24}`),
+	"Stripe Test Secret Key":        regexp.MustCompile(`sk_test_[0-9a-zA-Z]{24}`),
+	"Slack Bot Token":               regexp.MustCompile(`xoxb-[A-Za-z0-9-]{24,34}`),
+	"Slack User Token":              regexp.MustCompile(`xoxp-[A-Za-z0-9-]{24,34}`),
+    "Google Gmail Api Key":          regexp.MustCompile(`AIza[0-9A-Za-z\\-_]{35}`),
+    "Google Gmail Oauth":            regexp.MustCompile(`\b[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com\b`),
+    "Google Oauth Access Token":     regexp.MustCompile(`ya29\.[0-9A-Za-z\\-_]+`),
+    "Mailchimp Api Key":             regexp.MustCompile(`[0-9a-f]{32}-us[0-9]{1,2}`),
+    "Mailgun Api Key":               regexp.MustCompile(`key-[0-9a-zA-Z]{32}`),
+    "Google Drive Oauth":            regexp.MustCompile(`\b[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com\b`),
+    "Paypal Braintree Access Token": regexp.MustCompile(`access_token\\$production\\$[0-9a-z]{16}\\$[0-9a-f]{32}`),
+    "Picatic Api Key":               regexp.MustCompile(`sk_live_[0-9a-z]{32}`),
+    "Stripe Api Key":                regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
+    "Stripe Restricted Api Key":     regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
+    "Square Access Token 2":         regexp.MustCompile(`sq0atp-[0-9A-Za-z\\-_]{22}`),
+    "Square Oauth Secret 2":         regexp.MustCompile(`sq0csp-[0-9A-Za-z\\-_]{43}`),
+    "Twitter Access Token":          regexp.MustCompile(`(?i)\b(?:twitter|tw)\s*[_-]?access[_-]?token\s*[:=]\s*["']?[0-9]+-[0-9a-zA-Z]{40}["']?`),
+	"Heroku Api Key 3":              regexp.MustCompile(`(?i)[hH][eE][rR][oO][kK][uU].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}`),
+    "Generic Api Key":               regexp.MustCompile(`(?i)\bapi[_-]?key\s*[:=]\s*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
+    "Generic Secret":                regexp.MustCompile(`(?i)\bsecret\s*[:=]\s*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
+    "Slack Webhook":                 regexp.MustCompile(`https://hooks[.]slack[.]com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}`),
+    "Gcp Service Account":           regexp.MustCompile(`\"type\": \"service_account\"`),
+    "Password in Url":               regexp.MustCompile(`[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]`),
+	"Discord Webhook url":           regexp.MustCompile(`https://discord(?:app)?\.com/api/webhooks/[0-9]{18,20}/[A-Za-z0-9_-]{64,}`),
+	"Discord bot Token":             regexp.MustCompile(`[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}`),
+	"Okta Api Token":                regexp.MustCompile(`00[a-zA-Z0-9]{30}\.[a-zA-Z0-9\-_]{30,}\.[a-zA-Z0-9\-_]{30,}`),
+	"Sendgrid Api Key":              regexp.MustCompile(`SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}`),
+	"Mapbox Access Token":           regexp.MustCompile(`pk\.[a-zA-Z0-9]{60}\.[a-zA-Z0-9]{22}`),
+	"Gitlab Personal Access token":  regexp.MustCompile(`glpat-[A-Za-z0-9\-]{20}`),
+	"Datadog Api Key":               regexp.MustCompile(`ddapi_[a-zA-Z0-9]{32}`),
+	"shopify Access Token":          regexp.MustCompile(`shpat_[A-Za-z0-9]{32}`),
+    "Atlassian Access Token":        regexp.MustCompile(`[a-zA-Z0-9]{20,}\.[a-zA-Z0-9_-]{6,}\.[a-zA-Z0-9_-]{25,}`),
+	"Crowdstrike Api Key":           regexp.MustCompile(`(?i)^[A-Za-z0-9]{32}\.[A-Za-z0-9]{16}$`),
+	"Quickbooks Api Key":            regexp.MustCompile(`A[0-9a-f]{32}`),
+	"Cisco Api Key":                 regexp.MustCompile(`cisco[A-Za-z0-9]{30}`),
+	"Cisco Access Token":            regexp.MustCompile(`access_token=\w+`),
+	"Segment Write Key":             regexp.MustCompile(`sk_[A-Za-z0-9]{32}`),
+	"Tiktok Access Token":           regexp.MustCompile(`tiktok_access_token=[a-zA-Z0-9_]+`),
+	"Slack Client Secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
+    "Phone Number":                  regexp.MustCompile(`^\+\d{9,14}$`),
+    "Email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
+	"Ali Cloud Access Key":		     regexp.MustCompile(`^LTAI[A-Za-z0-9]{12,20}$`),
+	"Tencent Cloud Access Key":	     regexp.MustCompile(`^AKID[A-Za-z0-9]{13,20}$`),
     }
 
     asciiArt = `
@@ -144,7 +144,7 @@ func main() {
     var (
         url, list, jsFile, output, regex, cookies, proxy string
         threads                                           int
-        quiet, help, update, extractEndpoints, skipTLS    bool
+        quiet, help, update, extractEndpoints, skipTLS, foundOnly bool
     )
 
 
@@ -156,8 +156,8 @@ func main() {
     flag.StringVar(&jsFile, "file", "", "Path to JavaScript file")
     flag.StringVar(&output, "o", "", "Output file path")
     flag.StringVar(&output, "output", "", "Output file path")
-    flag.StringVar(&regex, "r", "", "RegEx for filtering endpoints")
-    flag.StringVar(&regex, "regex", "", "RegEx for filtering endpoints")
+    flag.StringVar(&regex, "r", "", "RegEx for filtering results (endpoints and sensitive data)")
+    flag.StringVar(&regex, "regex", "", "RegEx for filtering results (endpoints and sensitive data)")
     flag.StringVar(&cookies, "c", "", "Cookies for authenticated JS files")
     flag.StringVar(&cookies, "cookies", "", "Cookies for authenticated JS files")
     flag.StringVar(&proxy, "p", "", "Set proxy (host:port)")
@@ -171,7 +171,11 @@ func main() {
     flag.BoolVar(&update, "update", false, "Update the tool with latest patterns")
     flag.BoolVar(&update, "up", false, "Update the tool to latest version")
     flag.BoolVar(&extractEndpoints, "ep", false, "Extract endpoints from JavaScript files")
+    flag.BoolVar(&extractEndpoints, "end-point", false, "Extract endpoints from JavaScript files")
+    flag.BoolVar(&skipTLS, "k", false, "Skip TLS certificate verification")
     flag.BoolVar(&skipTLS, "skip-tls", false, "Skip TLS certificate verification")
+    flag.BoolVar(&foundOnly, "fo", false, "Only show results when sensitive data is found (hide MISSING messages)")
+    flag.BoolVar(&foundOnly, "found-only", false, "Only show results when sensitive data is found (hide MISSING messages)")
 
 
     flag.Parse()
@@ -195,9 +199,9 @@ func main() {
                 inputURL := scanner.Text()
                 
                 if extractEndpoints {
-                    processInputsForEndpoints(inputURL, list, output, regex, cookies, proxy, threads, skipTLS)
+                    processInputsForEndpoints(inputURL, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
                 } else {
-                    processInputs(inputURL, list, output, regex, cookies, proxy, threads)
+                    processInputs(inputURL, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
                 }
             }
             if err := scanner.Err(); err != nil {
@@ -205,14 +209,14 @@ func main() {
             }
             return
         }
-        fmt.Println("Error: Either -u, -l, or -f must be provided.")
+        customHelp()
         os.Exit(1)
     }
 
 
     if !quiet {
         time.Sleep(100 * time.Millisecond)
-        fmt.Println(asciiArt)
+        displayAsciiArt()
     }
 
 
@@ -231,15 +235,42 @@ func main() {
     }
 
     if extractEndpoints && (url != "" || list != "") {
-        processInputsForEndpoints(url, list, output, regex, cookies, proxy, threads, skipTLS)
+        processInputsForEndpoints(url, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
     } else {
-        processInputs(url, list, output, regex, cookies, proxy, threads)
+        processInputs(url, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
     }
 }
 
 
+func displayAsciiArt() {
+    versionStatus := getVersionStatus()
+    var statusColor string
+    var statusText string
+    
+    switch versionStatus {
+    case "latest":
+        statusColor = colors["GREEN"]
+        statusText = "latest"
+    case "outdated":
+        statusColor = colors["RED"]
+        statusText = "outdated"
+    default:
+        statusColor = colors["YELLOW"]
+        statusText = "Unknown"
+    }
+    
+    fmt.Printf(`
+         ________             __         
+     __ / / __/ /  __ _____  / /____ ____
+    / // /\ \/ _ \/ // / _ \/ __/ -_) __/
+    \___/___/_//_/\_,_/_//_/\__/\__/_/  
+
+     %s (%s%s%s%s)                         Created by cc1a2b
+`, version, statusColor, statusText, colors["NC"], "")
+}
+
 func customHelp() {
-    fmt.Println(asciiArt)
+    displayAsciiArt()
     fmt.Println("Usage:")
     fmt.Println("  -u, --url URL                 Input a URL")
     fmt.Println("  -l, --list FILE.txt           Input a file with URLs (.txt)")
@@ -252,10 +283,11 @@ func customHelp() {
     fmt.Println("  -nc, --no-color               Disable color output")
     fmt.Println("  -q, --quiet                   Suppress ASCII art output")
     fmt.Println("  -o, --output FILENAME.txt     Output file path")
-    fmt.Println("  -r, --regex <pattern>         RegEx for filtering endpoints")
+    fmt.Println("  -r, --regex <pattern>         RegEx for filtering results (endpoints and sensitive data)")
     fmt.Println("  --update, --up                Update the tool to latest version")
-    fmt.Println("  --ep                          Extract endpoints from JavaScript files")
-    fmt.Println("  --skip-tls                    Skip TLS certificate verification")
+    fmt.Println("  -ep, --end-point              Extract endpoints from JavaScript files")
+    fmt.Println("  -k, --skip-tls                Skip TLS certificate verification")
+    fmt.Println("  -fo, --found-only             Only show results when sensitive data is found (hide MISSING messages)")
     fmt.Println("  -h, --help                    Display this help message")
 }
 
@@ -295,12 +327,12 @@ func processJSFile(jsFile, regex string) {
         fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
     } else {
         fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
-        searchForSensitiveData(jsFile, regex, "", "")
+        searchForSensitiveData(jsFile, regex, "", "", false, false)
     }
 }
 
 
-func processInputs(url, list, output, regex, cookie, proxy string, threads int) {
+func processInputs(url, list, output, regex, cookie, proxy string, threads int, skipTLS, foundOnly bool) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
 
@@ -320,20 +352,19 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int) 
         go func() {
             defer wg.Done()
             for u := range urlChannel {
-                _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy)
+                _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy, skipTLS, foundOnly)
 
                 if fileWriter != nil {
                     fmt.Fprintln(fileWriter, "URL:", u)
                     for name, matches := range sensitiveData {
                         for _, match := range matches {
-                            fmt.Fprintf(fileWriter, "Sensitive Data [%s]: %s\n", name, match)
+                            fmt.Fprintf(fileWriter, "Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
                         }
                     }
                 } else {
-                    fmt.Println("URL:", u)
                     for name, matches := range sensitiveData {
                         for _, match := range matches {
-                            fmt.Printf("Sensitive Data [%s]: %s\n", name, match)
+                            fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
                         }
                     }
                 }
@@ -396,19 +427,25 @@ func enqueueFromStdin(urlChannel chan<- string) {
 }
 
 
-func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[string][]string) {
+func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundOnly bool) (string, map[string][]string) {
     var client *http.Client
 
+    transport := &http.Transport{}
+    
+    if skipTLS {
+        transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    }
+    
     if proxy != "" {
         proxyURL, err := url.Parse(proxy)
         if err != nil {
             fmt.Printf("Invalid proxy URL: %v\n", err)
             return urlStr, nil
         }
-        client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
-    } else {
-        client = &http.Client{}
+        transport.Proxy = http.ProxyURL(proxyURL)
     }
+    
+    client = &http.Client{Transport: transport}
 
     var sensitiveData map[string][]string
 
@@ -425,7 +462,6 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
 
         resp, err := client.Do(req)
         if err != nil {
-            fmt.Printf("Failed to fetch URL %s: %v\n", urlStr, err)
             return urlStr, nil
         }
         defer resp.Body.Close()
@@ -436,7 +472,7 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
             return urlStr, nil
         }
 
-        sensitiveData = reportMatches(urlStr, body, regexPatterns)
+        sensitiveData = reportMatches(urlStr, body, regexPatterns, regex, foundOnly)
     } else {
         body, err := ioutil.ReadFile(urlStr)
         if err != nil {
@@ -444,37 +480,128 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string) (string, map[st
             return urlStr, nil
         }
 
-        sensitiveData = reportMatches(urlStr, body, regexPatterns)
+        sensitiveData = reportMatches(urlStr, body, regexPatterns, regex, foundOnly)
     }
 
     return urlStr, sensitiveData
 }
 
 
-func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.Regexp) map[string][]string {
+func isUnwantedEmail(email string) bool {
+    unwantedPrefixes := []string{
+        "info@", "career@", "jobs@", "admin@", "support@", "contact@", 
+        "help@", "noreply@", "no-reply@", "test@", "demo@", "example@",
+    }
+    
+    unwantedDomains := []string{
+        "example.com", "test.com", "localhost", "example.org", "example.net",
+    }
+    
+    email = strings.ToLower(email)
+    
+    // Check unwanted prefixes
+    for _, prefix := range unwantedPrefixes {
+        if strings.HasPrefix(email, prefix) {
+            return true
+        }
+    }
+    
+    // Check unwanted domains
+    for _, domain := range unwantedDomains {
+        if strings.HasSuffix(email, "@"+domain) {
+            return true
+        }
+    }
+    
+    return false
+}
+
+func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.Regexp, filterRegex string, foundOnly bool) map[string][]string {
     matchesMap := make(map[string][]string)
 
     for name, pattern := range regexPatterns {
         if pattern.Match(body) {
             matches := pattern.FindAllString(string(body), -1)
             if len(matches) > 0 {
-                matchesMap[name] = append(matchesMap[name], matches...)
+                // Apply regex filter if provided
+                if filterRegex != "" {
+                    filterPattern, err := regexp.Compile(filterRegex)
+                    if err == nil {
+                        filteredMatches := []string{}
+                        for _, match := range matches {
+                            if filterPattern.MatchString(match) {
+                                filteredMatches = append(filteredMatches, match)
+                            }
+                        }
+                        if len(filteredMatches) > 0 {
+                            matchesMap[name] = append(matchesMap[name], filteredMatches...)
+                        }
+                    }
+                } else {
+                    // Special filtering for emails
+                    if name == "Email" {
+                        filteredMatches := []string{}
+                        for _, match := range matches {
+                            if !isUnwantedEmail(match) {
+                                filteredMatches = append(filteredMatches, match)
+                            }
+                        }
+                        if len(filteredMatches) > 0 {
+                            matchesMap[name] = append(matchesMap[name], filteredMatches...)
+                        }
+                    } else {
+                        matchesMap[name] = append(matchesMap[name], matches...)
+                    }
+                }
             }
         }
     }
 
     if len(matchesMap) > 0 {
         fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
-        for name, matches := range matchesMap {
-            for _, match := range matches {
-                fmt.Printf("%s ==> %s\n", name, match)
-            }
-        }
     } else {
-        fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], source)
+        if !foundOnly {
+            fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], source)
+        }
     }
 
     return matchesMap
+}
+
+func getVersionStatus() string {
+    currentVersion := version
+    
+    resp, err := http.Get("https://api.github.com/repos/cc1a2b/jshunter/releases/latest")
+    if err != nil {
+        return "Unknown"
+    }
+    defer resp.Body.Close()
+    
+    if resp.StatusCode != 200 {
+        return "Unknown"
+    }
+    
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return "Unknown"
+    }
+    
+    var release struct {
+        TagName string `json:"tag_name"`
+    }
+    
+    err = json.Unmarshal(body, &release)
+    if err != nil {
+        return "Unknown"
+    }
+    
+    latestVersion := release.TagName
+    
+    if latestVersion == currentVersion {
+        return "latest"
+    }
+    
+    return "outdated"
 }
 
 func updateTool() {
@@ -612,7 +739,7 @@ func processJSFileForEndpoints(jsFile, regex, output string) {
     }
 }
 
-func processInputsForEndpoints(url, list, output, regex, cookie, proxy string, threads int, skipTLS bool) {
+func processInputsForEndpoints(url, list, output, regex, cookie, proxy string, threads int, skipTLS, foundOnly bool) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
     
