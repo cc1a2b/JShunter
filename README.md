@@ -141,20 +141,7 @@ go install -v github.com/cc1a2b/jshunter@latest
 jshunter --help
 ```
 
-### Method 2: Binary Releases
-Download pre-compiled binaries from [GitHub Releases](https://github.com/cc1a2b/jshunter/releases)
-
-```bash
-# Linux/macOS
-wget https://github.com/cc1a2b/jshunter/releases/latest/download/jshunter-linux-amd64
-chmod +x jshunter-linux-amd64
-sudo mv jshunter-linux-amd64 /usr/local/bin/jshunter
-
-# Windows (PowerShell)
-Invoke-WebRequest -Uri "https://github.com/cc1a2b/jshunter/releases/latest/download/jshunter-windows-amd64.exe" -OutFile "jshunter.exe"
-```
-
-### Method 3: Build from Source
+### Method 2: Build from Source
 ```bash
 git clone https://github.com/cc1a2b/jshunter.git
 cd jshunter
