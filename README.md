@@ -324,56 +324,62 @@ cat urls.txt | grep "\.js" | jshunter -L    # Links only
 
 ## 📋 Command Reference
 
-### Basic Options
-- `-u, --url <URL>`: Input a URL to analyze.
-- `-l, --list <file>`: Input a file with URLs (.txt) to analyze.
-- `-f, --file <file>`: Path to a JavaScript file to analyze.
-- `-t, --threads <number>`: Number of concurrent threads (default: 5).
-- `-c, --cookies <cookies>`: Add cookies for authenticated JS files.
-- `-p, --proxy <host:port>`: Set proxy (host:port), e.g., 127.0.0.1:8080 for Burp Suite.
-- `-q, --quiet`: Suppress ASCII art output.
-- `-o, --output <file>`: Output file path.
-- `-r, --regex <pattern>`: RegEx for filtering results (endpoints and sensitive data).
-- `--update, --up`: Update the tool to the latest version.
-- `-ep, --end-point`: Extract endpoints from JavaScript files.
-- `-k, --skip-tls`: Skip TLS certificate verification.
-- `-fo, --found-only`: Only show results when sensitive data is found (hide MISSING messages).
-- `-h, --help`: Display this help message.
+Get the complete help anytime with `jshunter --help`
 
-### HTTP Configuration
-- `-H, --header "Key: Value"`: Custom HTTP headers (repeatable, including authentication).
-- `-U, --user-agent <UA>`: Custom User-Agent string or path to file containing user agents (one per line).
-- `-R, --rate-limit <MS>`: Request rate limiting delay in milliseconds.
-- `-T, --timeout <SEC>`: HTTP request timeout in seconds (default: 30).
-- `-y, --retry <INT>`: Retry attempts for failed requests (default: 2).
+```
+Usage:
+  -u, --url URL                 Input a URL
+  -l, --list FILE.txt           Input a file with URLs (.txt)
+  -f, --file FILE.js            Path to JavaScript file
 
-### JavaScript Analysis
-- `-d, --deobfuscate`: Deobfuscate minified and obfuscated JavaScript.
-- `-m, --sourcemap`: Parse source maps for original code analysis.
-- `-e, --eval`: Analyze dynamic code execution (eval, Function).
-- `-z, --obfs-detect`: Detect code obfuscation patterns and techniques.
+Basic Options:
+  -t, --threads INT             Number of concurrent threads (default: 5)
+  -c, --cookies <cookies>      Authentication cookies for protected resources
+  -p, --proxy host:port        HTTP proxy configuration (e.g., 127.0.0.1:8080 for Burp Suite)
+  -q, --quiet                  Suppress ASCII art output
+  -o, --output FILENAME.txt    Output file path
+  -r, --regex <pattern>        RegEx for filtering results (endpoints and sensitive data)
+  --update, --up               Update the tool to latest version
+  -ep, --end-point             Extract endpoints from JavaScript files
+  -k, --skip-tls               Skip TLS certificate verification
+  -fo, --found-only            Only show results when sensitive data is found (hide MISSING messages)
 
-### Security Analysis
-- `-s, --secrets`: Detect API keys, tokens, and credentials.
-- `-x, --tokens`: Extract JWT and authentication tokens.
-- `-P, --params`: Discover hidden parameters and variables.
-- `-PU, --param-urls`: Advanced parameter extraction with URL context.
-- `-i, --internal`: Filter for internal/private endpoints only.
-- `-g, --graphql`: Analyze GraphQL endpoints and queries.
-- `-B, --bypass`: Detect WAF bypass patterns and techniques.
-- `-F, --firebase`: Analyze Firebase configurations and keys.
-- `-L, --links`: Extract and analyze all embedded links.
+HTTP Configuration:
+  -H, --header "Key: Value"    Custom HTTP headers (repeatable, including Auth)
+  -U, --user-agent UA          Custom User-Agent string or file path (one per line)
+  -R, --rate-limit MS          Request rate limiting delay (milliseconds)
+  -T, --timeout SEC            HTTP request timeout (seconds)
+  -y, --retry INT              Retry attempts for failed requests (default: 2)
 
-### Scope & Discovery
-- `-w, --crawl <DEPTH>`: Recursive JavaScript discovery depth (default: 1).
-- `-D, --domain <DOMAIN>`: Limit analysis to specific domain.
-- `-E, --ext <extensions>`: Filter by JavaScript file extensions (comma-separated).
+JavaScript Analysis:
+  -d, --deobfuscate            Deobfuscate minified and obfuscated JavaScript
+  -m, --sourcemap              Parse source maps for original code analysis
+  -e, --eval                   Analyze dynamic code execution (eval, Function)
+  -z, --obfs-detect            Detect code obfuscation patterns and techniques
 
-### Output Formats
-- `-j, --json`: Structured JSON output format.
-- `-C, --csv`: CSV format for spreadsheet analysis.
-- `-v, --verbose`: Detailed analysis and debug output.
-- `-n, --burp`: Burp Suite compatible export format.
+Security Analysis:
+  -s, --secrets                Detect API keys, tokens, and credentials
+  -x, --tokens                 Extract JWT and authentication tokens
+  -P, --params                 Discover hidden parameters and variables
+  -PU, --param-urls            Advanced parameter extraction with URL context
+  -i, --internal               Filter for internal/private endpoints
+  -g, --graphql                Analyze GraphQL endpoints and queries
+  -B, --bypass                 Detect WAF bypass patterns and techniques
+  -F, --firebase               Analyze Firebase configurations and keys
+  -L, --links                  Extract and analyze all embedded links
+
+Scope & Discovery:
+  -w, --crawl DEPTH            Recursive JavaScript discovery depth (default: 1)
+  -D, --domain DOMAIN          Limit analysis to specific domain
+  -E, --ext                    Filter by JavaScript file extensions
+
+Output Formats:
+  -j, --json                   Structured JSON output format
+  -C, --csv                    CSV format for spreadsheet analysis
+  -v, --verbose                Detailed analysis and debug output
+  -n, --burp                   Burp Suite compatible export format
+  -h, --help                   Display this help message
+```
 
 ---
 
