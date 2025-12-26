@@ -141,7 +141,20 @@ go install -v github.com/cc1a2b/jshunter@latest
 jshunter --help
 ```
 
-### Method 2: Build from Source
+### Method 2: Binary Releases
+Download pre-compiled binaries from [GitHub Releases](https://github.com/cc1a2b/jshunter/releases)
+
+```bash
+# Linux/macOS
+wget https://github.com/cc1a2b/jshunter/releases/latest/download/jshunter-linux-amd64
+chmod +x jshunter-linux-amd64
+sudo mv jshunter-linux-amd64 /usr/local/bin/jshunter
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/cc1a2b/jshunter/releases/latest/download/jshunter-windows-amd64.exe" -OutFile "jshunter.exe"
+```
+
+### Method 3: Build from Source
 ```bash
 git clone https://github.com/cc1a2b/jshunter.git
 cd jshunter
@@ -185,127 +198,31 @@ jshunter -l targets.txt -s -j -o security_findings.json
 
 ## 💡 Usage Examples
 
-### Basic Usage
-
-Analyze a single JavaScript file from URL:
 ```bash
-jshunter -u "https://example.com/javascript.js"
-```
+# Analyze single URL
+jshunter -u "https://example.com/app.js"
 
-Analyze multiple URLs from a file:
-```bash
-jshunter -l jsurls.txt
-```
+# Analyze multiple URLs from file
+jshunter -l urls.txt
 
-Analyze a local JavaScript file:
-```bash
-jshunter -f javascript.js
-```
-
-Pipe URLs from stdin (normal mode - shows all patterns):
-```bash
+# Pipe URLs from stdin
 cat urls.txt | grep "\.js" | jshunter
+
+# Find secrets and API keys
+jshunter -u "https://example.com/app.js" -s
+
+# Comprehensive security analysis with deobfuscation
+jshunter -u "https://target.com/app.js" -d -s -g -F
+
+# Export results to JSON
+jshunter -l targets.txt -s -j -o findings.json
+
+# Use with Burp Suite proxy
+jshunter -l targets.txt -p 127.0.0.1:8080 -s -n -o burp_findings.txt
+
+# Rate-limited scanning with custom headers
+jshunter -l urls.txt -R 2000 -H "Authorization: Bearer token" -s -q
 ```
-
-### Security Analysis (Specific Detection)
-
-Find only secrets (API keys, tokens, credentials):
-```bash
-cat urls.txt | grep "\.js" | jshunter -s
-```
-
-Find only GraphQL endpoints:
-```bash
-cat urls.txt | grep "\.js" | jshunter -g
-```
-
-Find only Firebase configs:
-```bash
-cat urls.txt | grep "\.js" | jshunter -F
-```
-
-Extract links from same domain:
-```bash
-cat urls.txt | grep "\.js" | jshunter -L
-```
-
-Extract hidden parameters:
-```bash
-cat urls.txt | grep "\.js" | jshunter -P
-```
-
-Extract JWT tokens:
-```bash
-cat urls.txt | grep "\.js" | jshunter -x
-```
-
-### JS Analysis (Modifiers)
-
-Deobfuscate and analyze (runs all patterns on deobfuscated code):
-```bash
-cat urls.txt | grep "\.js" | jshunter -d
-```
-
-Deobfuscate + find secrets:
-```bash
-cat urls.txt | grep "\.js" | jshunter -d -s
-```
-
-Parse source maps + find GraphQL:
-```bash
-cat urls.txt | grep "\.js" | jshunter -m -g
-```
-
-### Advanced Usage
-
-Extract endpoints with custom headers and proxy:
-```bash
-jshunter -u "https://example.com/app.js" -H "Authorization: Bearer token" -p 127.0.0.1:8080
-```
-
-Recursive crawling with deobfuscation:
-```bash
-jshunter -u "https://example.com/main.js" -w 3 -d -v
-```
-
-Export to JSON with rate limiting:
-```bash
-jshunter -l urls.txt -j -R 1000 -o results.json
-```
-
-Burp Suite export format:
-```bash
-jshunter -l urls.txt -n -o burp_export.txt
-```
-
-### Flag Behavior
-
-**Normal Mode** (no flags):
-```bash
-cat urls.txt | grep "\.js" | jshunter
-```
-- Searches for ALL patterns (secrets, tokens, emails, etc.)
-- Shows `[MISSING]` messages when no findings
-
-**With ANY Flag** (Security Analysis OR JS Analysis):
-```bash
-cat urls.txt | grep "\.js" | jshunter -s    # Secrets only
-cat urls.txt | grep "\.js" | jshunter -g    # GraphQL only
-cat urls.txt | grep "\.js" | jshunter -d    # Deobfuscate + all patterns
-cat urls.txt | grep "\.js" | jshunter -L    # Links only
-```
-- No `[MISSING]` messages (cleaner output)
-- Shows only `[FOUND]` when findings exist
-
-**Security Analysis Flags** (`-s`, `-g`, `-L`, `-F`, `-x`, `-P`, etc.):
-- Searches ONLY for the specific pattern requested
-- Example: `-s` shows only secrets, `-g` shows only GraphQL
-
-**JS Analysis Flags** (`-d`, `-m`, `-e`, `-z`):
-- Modifier flags that preprocess JavaScript
-- Used alone: runs all patterns on modified JS
-- Combined with Security Analysis: runs specific patterns on modified JS
-- Example: `-d -s` deobfuscates and finds secrets only
 
 ---
 
