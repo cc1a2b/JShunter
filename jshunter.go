@@ -3,24 +3,29 @@ package main
 import (
     "bufio"
     "crypto/tls"
+    "encoding/csv"
     "encoding/json"
     "flag"
     "fmt"
     "io"
     "io/ioutil"
+    "math"
+    "net"
     "net/http"
     "net/url"
     "os"
     "regexp"
     "runtime"
+    "sort"
     "strings"
     "sync"
     "time"
+    "math/rand"
 )
 
 
 var (
-    version = "v0.3"
+    version = "v0.4"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -30,6 +35,13 @@ var (
         "PURPLE": "\033[0;35m",
         "NC":     "\033[0m",
     }
+    // Global deduplication for all outputs
+    globalSeenParams = make(map[string]bool)
+    globalSeenAll    = make(map[string]bool)
+    globalSeenMutex  sync.Mutex
+    globalFoundAny   = false // Track if any findings were made across all files
+    missingMessages  = make([]string, 0) // Buffer for MISSING messages
+    missingMutex     sync.Mutex
 )
 
 
@@ -164,13 +176,72 @@ func (pr *progressReader) Read(p []byte) (int, error) {
     return n, err
 }
 
+// flagList is a custom type for handling multiple header flags
+type flagList []string
+
+func (f *flagList) String() string {
+    return strings.Join(*f, ", ")
+}
+
+func (f *flagList) Set(value string) error {
+    *f = append(*f, value)
+    return nil
+}
+
+// Config holds all configuration options
+type Config struct {
+    // Basic options
+    URL, List, JSFile, Output, Regex, Cookies, Proxy string
+    Threads                                           int
+    Quiet, Help, Update, ExtractEndpoints, SkipTLS, FoundOnly bool
+    
+    // Advanced HTTP
+    Headers    []string // Custom HTTP headers
+    UserAgent  string   // Custom User-Agent (single string or randomly selected from file)
+    UserAgents []string // List of User-Agents (when loaded from file)
+    RateLimit int      // Delay between requests (ms)
+    Timeout    int      // Request timeout (seconds)
+    Retry      int      // Retry failed requests
+    
+    // JS Analysis
+    Deobfuscate, SourceMap, Eval, ObfsDetect bool
+    
+    // Security Analysis
+    Secrets, Tokens, Params, ParamURLs, Internal, GraphQL, Bypass, Firebase, Links bool
+    
+    // Crawling & Scope
+    CrawlDepth int    // Recursive JS crawling depth
+    Domain     string // Scope to specific domain
+    Ext        string // Match specific JS file extensions
+    
+    // Output
+    JSON, CSV, Verbose, Burp bool
+}
+
 func main() {
     var (
         url, list, jsFile, output, regex, cookies, proxy string
         threads                                           int
         quiet, help, update, extractEndpoints, skipTLS, foundOnly bool
     )
-
+    
+    // Advanced HTTP
+    var headers flagList
+    var userAgent string
+    var rateLimit, timeout, retry int
+    
+    // JS Analysis
+    var deobfuscate, sourceMap, eval, obfsDetect bool
+    
+    // Security Analysis
+    var secrets, tokens, params, paramURLs, internal, graphql, bypass, firebase, links bool
+    
+    // Crawling & Scope
+    var crawlDepth int
+    var domain, ext string
+    
+    // Output
+    var jsonOut, csvOut, verbose, burp bool
 
     flag.StringVar(&url, "u", "", "Input a URL")
     flag.StringVar(&url, "url", "", "Input a URL")
@@ -200,9 +271,128 @@ func main() {
     flag.BoolVar(&skipTLS, "skip-tls", false, "Skip TLS certificate verification")
     flag.BoolVar(&foundOnly, "fo", false, "Only show results when sensitive data is found (hide MISSING messages)")
     flag.BoolVar(&foundOnly, "found-only", false, "Only show results when sensitive data is found (hide MISSING messages)")
+    
+    // Advanced HTTP flags
+    flag.Var(&headers, "H", "Custom HTTP headers (repeatable, format: 'Key: Value')")
+    flag.Var(&headers, "header", "Custom HTTP headers (repeatable, format: 'Key: Value')")
+    flag.StringVar(&userAgent, "U", "", "Custom User-Agent string or path to file containing user agents (one per line)")
+    flag.StringVar(&userAgent, "user-agent", "", "Custom User-Agent string or path to file containing user agents (one per line)")
+    flag.IntVar(&rateLimit, "R", 0, "Delay between requests (ms)")
+    flag.IntVar(&rateLimit, "rate-limit", 0, "Delay between requests (ms)")
+    flag.IntVar(&timeout, "T", 30, "Request timeout (seconds)")
+    flag.IntVar(&timeout, "timeout", 30, "Request timeout (seconds)")
+    flag.IntVar(&retry, "y", 2, "Retry failed requests")
+    flag.IntVar(&retry, "retry", 2, "Retry failed requests")
+    
+    // JS Analysis flags
+    flag.BoolVar(&deobfuscate, "d", false, "Deobfuscate minified/obfuscated code")
+    flag.BoolVar(&deobfuscate, "deobfuscate", false, "Deobfuscate minified/obfuscated code")
+    flag.BoolVar(&sourceMap, "m", false, "Parse source maps for original JS")
+    flag.BoolVar(&sourceMap, "sourcemap", false, "Parse source maps for original JS")
+    flag.BoolVar(&eval, "e", false, "Analyze eval() & dynamic code")
+    flag.BoolVar(&eval, "eval", false, "Analyze eval() & dynamic code")
+    flag.BoolVar(&obfsDetect, "z", false, "Detect obfuscation techniques")
+    flag.BoolVar(&obfsDetect, "obfs-detect", false, "Detect obfuscation techniques")
+    
+    // Security Analysis flags
+    flag.BoolVar(&secrets, "s", false, "API keys, tokens, credentials detection")
+    flag.BoolVar(&secrets, "secrets", false, "API keys, tokens, credentials detection")
+    flag.BoolVar(&tokens, "x", false, "JWT/auth tokens extraction")
+    flag.BoolVar(&tokens, "tokens", false, "JWT/auth tokens extraction")
+    flag.BoolVar(&params, "P", false, "Hidden parameters discovery")
+    flag.BoolVar(&params, "params", false, "Hidden parameters discovery")
+    flag.BoolVar(&paramURLs, "PU", false, "Advanced URL parameter extraction with base URLs")
+    flag.BoolVar(&paramURLs, "param-urls", false, "Advanced URL parameter extraction with base URLs")
+    flag.BoolVar(&internal, "i", false, "Internal/private endpoints only")
+    flag.BoolVar(&internal, "internal", false, "Internal/private endpoints only")
+    flag.BoolVar(&graphql, "g", false, "GraphQL endpoints & queries")
+    flag.BoolVar(&graphql, "graphql", false, "GraphQL endpoints & queries")
+    flag.BoolVar(&bypass, "B", false, "WAF bypass patterns detection")
+    flag.BoolVar(&bypass, "bypass", false, "WAF bypass patterns detection")
+    flag.BoolVar(&firebase, "F", false, "Firebase config/secrets detection")
+    flag.BoolVar(&firebase, "firebase", false, "Firebase config/secrets detection")
+    flag.BoolVar(&links, "L", false, "Extract all links/URLs from JS")
+    flag.BoolVar(&links, "links", false, "Extract all links/URLs from JS")
+    
+    // Crawling & Scope flags
+    flag.IntVar(&crawlDepth, "w", 1, "Recursive JS crawling depth")
+    flag.IntVar(&crawlDepth, "crawl", 1, "Recursive JS crawling depth")
+    flag.StringVar(&domain, "D", "", "Scope to specific domain")
+    flag.StringVar(&domain, "domain", "", "Scope to specific domain")
+    flag.StringVar(&ext, "E", "", "Match specific JS file extensions (comma-separated)")
+    flag.StringVar(&ext, "ext", "", "Match specific JS file extensions (comma-separated)")
+    
+    // Output flags
+    flag.BoolVar(&jsonOut, "j", false, "Structured JSON output")
+    flag.BoolVar(&jsonOut, "json", false, "Structured JSON output")
+    flag.BoolVar(&csvOut, "C", false, "CSV for Excel/Sheets import")
+    flag.BoolVar(&csvOut, "csv", false, "CSV for Excel/Sheets import")
+    flag.BoolVar(&verbose, "v", false, "Detailed analysis output")
+    flag.BoolVar(&verbose, "verbose", false, "Detailed analysis output")
+    flag.BoolVar(&burp, "n", false, "Burp Suite export format")
+    flag.BoolVar(&burp, "burp", false, "Burp Suite export format")
 
 
     flag.Parse()
+
+    // Process User-Agent: check if it's a file path or a string
+    var userAgentsList []string
+    finalUserAgent := userAgent
+    if userAgent != "" {
+        // Check if it looks like a file path (contains path separators or common file extensions)
+        if strings.Contains(userAgent, "/") || strings.Contains(userAgent, "\\") || 
+           strings.HasSuffix(userAgent, ".txt") || strings.HasSuffix(userAgent, ".list") {
+            // Try to read as file
+            if fileInfo, err := os.Stat(userAgent); err == nil && !fileInfo.IsDir() {
+                // It's a file, read user agents from it
+                file, err := os.Open(userAgent)
+                if err == nil {
+                    defer file.Close()
+                    scanner := bufio.NewScanner(file)
+                    for scanner.Scan() {
+                        line := strings.TrimSpace(scanner.Text())
+                        if line != "" && !strings.HasPrefix(line, "#") {
+                            userAgentsList = append(userAgentsList, line)
+                        }
+                    }
+                    if len(userAgentsList) > 0 {
+                        // Select a random user agent from the list
+                        rand.Seed(time.Now().UnixNano())
+                        finalUserAgent = userAgentsList[rand.Intn(len(userAgentsList))]
+                        if !quiet {
+                            fmt.Printf("[%sINFO%s] Loaded %d user agents from file, using: %s\n", 
+                                colors["CYAN"], colors["NC"], len(userAgentsList), finalUserAgent)
+                        }
+                    } else {
+                        if !quiet {
+                            fmt.Printf("[%sWARN%s] User-Agent file is empty or contains no valid entries, using as string\n", 
+                                colors["YELLOW"], colors["NC"])
+                        }
+                    }
+                } else {
+                    if !quiet {
+                        fmt.Printf("[%sWARN%s] Could not read User-Agent file, using as string: %v\n", 
+                            colors["YELLOW"], colors["NC"], err)
+                    }
+                }
+            }
+        }
+    }
+
+    // Create config object
+    config := Config{
+        URL: url, List: list, JSFile: jsFile, Output: output, Regex: regex,
+        Cookies: cookies, Proxy: proxy, Threads: threads,
+        Quiet: quiet, Help: help, Update: update, ExtractEndpoints: extractEndpoints,
+        SkipTLS: skipTLS, FoundOnly: foundOnly,
+        Headers: headers, UserAgent: finalUserAgent, UserAgents: userAgentsList, RateLimit: rateLimit,
+        Timeout: timeout, Retry: retry,
+        Deobfuscate: deobfuscate, SourceMap: sourceMap, Eval: eval, ObfsDetect: obfsDetect,
+        Secrets: secrets, Tokens: tokens, Params: params, ParamURLs: paramURLs, Internal: internal,
+        GraphQL: graphql, Bypass: bypass, Firebase: firebase, Links: links,
+        CrawlDepth: crawlDepth, Domain: domain, Ext: ext,
+        JSON: jsonOut, CSV: csvOut, Verbose: verbose, Burp: burp,
+    }
 
     if help {
         customHelp()
@@ -214,22 +404,133 @@ func main() {
         return
     }
 
-
-
-    if url == "" && list == "" && jsFile == "" {
+    if config.URL == "" && config.List == "" && config.JSFile == "" {
         if isInputFromStdin() {
-            scanner := bufio.NewScanner(os.Stdin)
-            for scanner.Scan() {
-                inputURL := scanner.Text()
+            // Show ASCII art before processing stdin if not quiet
+            if !config.Quiet {
+                time.Sleep(100 * time.Millisecond)
+                displayAsciiArt()
+            }
+            
+            // Read all stdin content
+            stdinContent, err := ioutil.ReadAll(os.Stdin)
+            if err != nil {
+                if !config.Quiet {
+                    fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
+                }
+                return
+            }
+            
+            content := string(stdinContent)
+            
+            // Check if it looks like a list of URLs (each line is a URL)
+            lines := strings.Split(content, "\n")
+            urlCount := 0
+            jsLineCount := 0
+            totalLines := 0
+            
+            for _, line := range lines {
+                line = strings.TrimSpace(line)
+                if line == "" {
+                    continue
+                }
+                totalLines++
                 
-                if extractEndpoints {
-                    processInputsForEndpoints(inputURL, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
-                } else {
-                    processInputs(inputURL, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
+                // Check if line looks like a URL
+                if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
+                    urlCount++
+                }
+                // Check if line looks like JavaScript
+                if strings.Contains(line, "function") || 
+                   strings.Contains(line, "const ") || 
+                   strings.Contains(line, "let ") || 
+                   strings.Contains(line, "var ") ||
+                   strings.Contains(line, "URLSearchParams") ||
+                   strings.Contains(line, ".get(") ||
+                   strings.Contains(line, "fetch(") ||
+                   strings.Contains(line, "axios.") ||
+                   strings.Contains(line, "//") ||
+                   strings.Contains(line, "/*") {
+                    jsLineCount++
                 }
             }
-            if err := scanner.Err(); err != nil {
-                fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
+            
+            // Determine if it's JavaScript or URL list
+            // Priority: If most lines are URLs, always treat as URL list (process each URL)
+            isJavaScript := false
+            
+            if totalLines > 0 {
+                urlRatio := float64(urlCount) / float64(totalLines)
+                
+                // If more than 50% are URLs, treat as URL list (process each URL individually)
+                if urlRatio > 0.5 {
+                    isJavaScript = false
+                } else if config.ParamURLs || config.Params {
+                    // Using -PU/-P flags, check if it's actually JS code
+                    if jsLineCount > 5 || 
+                       strings.Contains(content, "function ") || 
+                       strings.Contains(content, "const urlParams") ||
+                       strings.Contains(content, "new URLSearchParams") ||
+                       strings.Contains(content, "URLSearchParams.get") {
+                        // Clear JavaScript patterns
+                        isJavaScript = true
+                    } else {
+                        // Default: treat as JavaScript when using -PU/-P
+                        isJavaScript = true
+                    }
+                } else {
+                    // Without -PU/-P, check if it's JavaScript
+                    if jsLineCount > 5 || strings.Contains(content, "function ") {
+                        isJavaScript = true
+                    }
+                }
+            }
+            
+            if isJavaScript {
+                // Process as JavaScript content directly
+                source := "stdin"
+                bodyBytes := []byte(content)
+                
+                if config.ParamURLs {
+                    paramURLs := extractURLParamsWithBaseURLs(content, source)
+                    if len(paramURLs) > 0 {
+                        globalSeenMutex.Lock()
+                        globalFoundAny = true // Mark that we found something
+                        for _, paramURL := range paramURLs {
+                            if !globalSeenAll[paramURL] {
+                                globalSeenAll[paramURL] = true
+                                fmt.Println(paramURL)
+                            }
+                        }
+                        globalSeenMutex.Unlock()
+                    }
+                } else if config.ExtractEndpoints {
+                    endpoints := extractEndpointsFromContent(content, config.Regex, "")
+                    displayEndpoints(endpoints, source)
+                } else {
+                    // Process as sensitive data search - use reportMatchesWithConfig directly
+                    reportMatchesWithConfig(source, bodyBytes, &config)
+                }
+            } else {
+                // Treat each line as URL/file path (old behavior)
+                scanner := bufio.NewScanner(strings.NewReader(content))
+                for scanner.Scan() {
+                    inputURL := strings.TrimSpace(scanner.Text())
+                    if inputURL == "" {
+                        continue
+                    }
+                    
+                    if config.ExtractEndpoints {
+                        processInputsForEndpointsWithConfig(inputURL, &config)
+                    } else {
+                        processInputsWithConfig(inputURL, &config)
+                    }
+                }
+                if err := scanner.Err(); err != nil {
+                    if !config.Quiet {
+                        fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
+                    }
+                }
             }
             return
         }
@@ -237,31 +538,28 @@ func main() {
         os.Exit(1)
     }
 
-
-    if !quiet {
+    if !config.Quiet {
         time.Sleep(100 * time.Millisecond)
         displayAsciiArt()
     }
 
-
-    if quiet {
+    if config.Quiet {
         disableColors()
     }
 
-
-    if jsFile != "" {
-        if extractEndpoints {
-            processJSFileForEndpoints(jsFile, regex, output)
+    if config.JSFile != "" {
+        if config.ExtractEndpoints {
+            processJSFileForEndpointsWithConfig(config.JSFile, &config)
         } else {
-            processJSFile(jsFile, regex)
+            processJSFileWithConfig(config.JSFile, &config)
         }
         return 
     }
 
-    if extractEndpoints && (url != "" || list != "") {
-        processInputsForEndpoints(url, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
+    if config.ExtractEndpoints && (config.URL != "" || config.List != "") {
+        processInputsForEndpointsWithConfig(config.URL, &config)
     } else {
-        processInputs(url, list, output, regex, cookies, proxy, threads, skipTLS, foundOnly)
+        processInputsWithConfig(config.URL, &config)
     }
 }
 
@@ -300,19 +598,53 @@ func customHelp() {
     fmt.Println("  -l, --list FILE.txt           Input a file with URLs (.txt)")
     fmt.Println("  -f, --file FILE.js            Path to JavaScript file")
     fmt.Println()
-    fmt.Println("Options:")
+    fmt.Println("Basic Options:")
     fmt.Println("  -t, --threads INT             Number of concurrent threads (default: 5)")
-    fmt.Println("  -c, --cookies <cookies>       Cookies for authenticated JS files")
-    fmt.Println("  -p, --proxy host:port         Set proxy (host:port), e.g., 127.0.0.1:8080 for Burp Suite")
-    fmt.Println("  -nc, --no-color               Disable color output")
-    fmt.Println("  -q, --quiet                   Suppress ASCII art output")
-    fmt.Println("  -o, --output FILENAME.txt     Output file path")
-    fmt.Println("  -r, --regex <pattern>         RegEx for filtering results (endpoints and sensitive data)")
-    fmt.Println("  --update, --up                Update the tool to latest version")
-    fmt.Println("  -ep, --end-point              Extract endpoints from JavaScript files")
-    fmt.Println("  -k, --skip-tls                Skip TLS certificate verification")
-    fmt.Println("  -fo, --found-only             Only show results when sensitive data is found (hide MISSING messages)")
-    fmt.Println("  -h, --help                    Display this help message")
+    fmt.Println("  -c, --cookies <cookies>      Authentication cookies for protected resources")
+    fmt.Println("  -p, --proxy host:port        HTTP proxy configuration (e.g., 127.0.0.1:8080 for Burp Suite)")
+    fmt.Println("  -q, --quiet                  Suppress ASCII art output")
+    fmt.Println("  -o, --output FILENAME.txt    Output file path")
+    fmt.Println("  -r, --regex <pattern>        RegEx for filtering results (endpoints and sensitive data)")
+    fmt.Println("  --update, --up               Update the tool to latest version")
+    fmt.Println("  -ep, --end-point             Extract endpoints from JavaScript files")
+    fmt.Println("  -k, --skip-tls               Skip TLS certificate verification")
+    fmt.Println("  -fo, --found-only            Only show results when sensitive data is found (hide MISSING messages)")
+    fmt.Println()
+    fmt.Println("HTTP Configuration:")
+    fmt.Println("  -H, --header \"Key: Value\"    Custom HTTP headers (repeatable, including Auth)")
+    fmt.Println("  -U, --user-agent UA          Custom User-Agent string or file path (one per line)")
+    fmt.Println("  -R, --rate-limit MS          Request rate limiting delay (milliseconds)")
+    fmt.Println("  -T, --timeout SEC            HTTP request timeout (seconds)")
+    fmt.Println("  -y, --retry INT              Retry attempts for failed requests (default: 2)")
+    fmt.Println()
+    fmt.Println("JavaScript Analysis:")
+    fmt.Println("  -d, --deobfuscate            Deobfuscate minified and obfuscated JavaScript")
+    fmt.Println("  -m, --sourcemap              Parse source maps for original code analysis")
+    fmt.Println("  -e, --eval                   Analyze dynamic code execution (eval, Function)")
+    fmt.Println("  -z, --obfs-detect            Detect code obfuscation patterns and techniques")
+    fmt.Println()
+    fmt.Println("Security Analysis:")
+    fmt.Println("  -s, --secrets                Detect API keys, tokens, and credentials")
+    fmt.Println("  -x, --tokens                 Extract JWT and authentication tokens")
+    fmt.Println("  -P, --params                 Discover hidden parameters and variables")
+    fmt.Println("  -PU, --param-urls            Advanced parameter extraction with URL context")
+    fmt.Println("  -i, --internal               Filter for internal/private endpoints")
+    fmt.Println("  -g, --graphql                Analyze GraphQL endpoints and queries")
+    fmt.Println("  -B, --bypass                 Detect WAF bypass patterns and techniques")
+    fmt.Println("  -F, --firebase               Analyze Firebase configurations and keys")
+    fmt.Println("  -L, --links                  Extract and analyze all embedded links")
+    fmt.Println()
+    fmt.Println("Scope & Discovery:")
+    fmt.Println("  -w, --crawl DEPTH            Recursive JavaScript discovery depth (default: 1)")
+    fmt.Println("  -D, --domain DOMAIN          Limit analysis to specific domain")
+    fmt.Println("  -E, --ext                    Filter by JavaScript file extensions")
+    fmt.Println()
+    fmt.Println("Output Formats:")
+    fmt.Println("  -j, --json                   Structured JSON output format")
+    fmt.Println("  -C, --csv                    CSV format for spreadsheet analysis")
+    fmt.Println("  -v, --verbose                Detailed analysis and debug output")
+    fmt.Println("  -n, --burp                   Burp Suite compatible export format")
+    fmt.Println("  -h, --help                   Display this help message")
 }
 
 func processStdin(output, regex, cookies, proxy string, threads int) {
@@ -345,18 +677,27 @@ func disableColors() {
 
 
 func processJSFile(jsFile, regex string) {
-    if _, err := os.Stat(jsFile); os.IsNotExist(err) {
-        fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
-    } else if err != nil {
-        fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
-    } else {
-        fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
-        searchForSensitiveData(jsFile, regex, "", "", false, false)
+    // Create minimal config for backward compatibility
+    config := &Config{
+        Regex: regex,
     }
+    processJSFileWithConfig(jsFile, config)
 }
 
 
 func processInputs(url, list, output, regex, cookie, proxy string, threads int, skipTLS, foundOnly bool) {
+    // Create config for backward compatibility
+    config := &Config{
+        URL: url, List: list, Output: output, Regex: regex,
+        Cookies: cookie, Proxy: proxy, Threads: threads,
+        SkipTLS: skipTLS, FoundOnly: foundOnly,
+        Timeout: 30, Retry: 2,
+    }
+    processInputsWithConfig(url, config)
+    return
+}
+
+func processInputsOld(url, list, output, regex, cookie, proxy string, threads int, skipTLS, foundOnly bool) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
 
@@ -376,19 +717,28 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int, 
         go func() {
             defer wg.Done()
             for u := range urlChannel {
-                _, sensitiveData := searchForSensitiveData(u, regex, cookie, proxy, skipTLS, foundOnly)
+                // Create minimal config for each request
+                config := &Config{
+                    Regex: regex, Cookies: cookie, Proxy: proxy,
+                    SkipTLS: skipTLS, FoundOnly: foundOnly,
+                    Timeout: 30, Retry: 1,
+                }
+                _, sensitiveData := searchForSensitiveDataWithConfig(u, config)
 
-                if fileWriter != nil {
-                    fmt.Fprintln(fileWriter, "URL:", u)
-                    for name, matches := range sensitiveData {
-                        for _, match := range matches {
-                            fmt.Fprintf(fileWriter, "Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                // Don't print sensitive data if ParamURLs flag is set (user only wants URL params)
+                if !config.ParamURLs {
+                    if fileWriter != nil {
+                        fmt.Fprintln(fileWriter, "URL:", u)
+                        for name, matches := range sensitiveData {
+                            for _, match := range matches {
+                                fmt.Fprintf(fileWriter, "Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                            }
                         }
-                    }
-                } else {
-                    for name, matches := range sensitiveData {
-                        for _, match := range matches {
-                            fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                    } else {
+                        for name, matches := range sensitiveData {
+                            for _, match := range matches {
+                                fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                            }
                         }
                     }
                 }
@@ -404,6 +754,26 @@ func processInputs(url, list, output, regex, cookie, proxy string, threads int, 
 
     close(urlChannel)
     wg.Wait()
+    
+    // Print buffered MISSING messages only if no findings were made
+    // This is for the old/legacy function - always clear buffer
+    globalSeenMutex.Lock()
+    foundAny := globalFoundAny
+    globalSeenMutex.Unlock()
+    
+    if !foundAny && !foundOnly {
+        missingMutex.Lock()
+        for _, msg := range missingMessages {
+            fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], msg)
+        }
+        missingMessages = missingMessages[:0] // Clear the buffer
+        missingMutex.Unlock()
+    } else {
+        // Clear the buffer if findings were made
+        missingMutex.Lock()
+        missingMessages = missingMessages[:0]
+        missingMutex.Unlock()
+    }
 }
 
 
@@ -451,25 +821,199 @@ func enqueueFromStdin(urlChannel chan<- string) {
 }
 
 
+// isTLSCanceledError checks if an error is a TLS cancellation error (common with proxy interception)
+func isTLSCanceledError(err error) bool {
+    if err == nil {
+        return false
+    }
+    errStr := strings.ToLower(err.Error())
+    // Check for various TLS and connection errors that can occur with proxy interception
+    return strings.Contains(errStr, "tls: user canceled") || 
+           strings.Contains(errStr, "user canceled") ||
+           strings.Contains(errStr, "tls: handshake failure") ||
+           strings.Contains(errStr, "remote error: tls") ||
+           strings.Contains(errStr, "connection reset") ||
+           err == io.EOF // EOF can occur when proxy closes connection
+}
+
+// isJavaScriptContentType checks if the Content-Type header indicates JavaScript content
+func isJavaScriptContentType(contentType string) bool {
+    if contentType == "" {
+        return false
+    }
+    contentType = strings.ToLower(strings.TrimSpace(contentType))
+    // Remove charset and other parameters (e.g., "application/javascript; charset=utf-8")
+    if idx := strings.Index(contentType, ";"); idx != -1 {
+        contentType = contentType[:idx]
+    }
+    contentType = strings.TrimSpace(contentType)
+    
+    // Common JavaScript MIME types
+    jsTypes := []string{
+        "application/javascript",
+        "application/x-javascript",
+        "text/javascript",
+        "text/ecmascript",
+        "application/ecmascript",
+    }
+    
+    for _, jsType := range jsTypes {
+        if contentType == jsType {
+            return true
+        }
+    }
+    
+    return false
+}
+
+// isValidStatusCode checks if the HTTP status code indicates a successful response
+func isValidStatusCode(statusCode int) bool {
+    // Accept 2xx status codes (successful responses)
+    return statusCode >= 200 && statusCode < 300
+}
+
+// isNonJavaScriptContentType checks if Content-Type indicates non-JavaScript content that should be filtered out
+func isNonJavaScriptContentType(contentType string) bool {
+    if contentType == "" {
+        return false // Unknown content type, check URL extension instead
+    }
+    contentType = strings.ToLower(strings.TrimSpace(contentType))
+    // Remove charset and other parameters (e.g., "text/html; charset=utf-8")
+    if idx := strings.Index(contentType, ";"); idx != -1 {
+        contentType = contentType[:idx]
+    }
+    contentType = strings.TrimSpace(contentType)
+    
+    // Non-JavaScript content types to filter out
+    nonJSTypes := []string{
+        // HTML
+        "text/html",
+        "application/xhtml+xml",
+        // CSS
+        "text/css",
+        // Plain text
+        "text/plain",
+        // JSON (unless it's a JS file with wrong content-type)
+        "application/json",
+        // XML
+        "text/xml",
+        "application/xml",
+        "application/rss+xml",
+        "application/atom+xml",
+        // Images
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "image/svg+xml",
+        "image/x-icon",
+        "image/vnd.microsoft.icon",
+        // Fonts
+        "font/woff",
+        "font/woff2",
+        "application/font-woff",
+        "application/font-woff2",
+        // Video
+        "video/mp4",
+        "video/webm",
+        "video/ogg",
+        // Audio
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        // Documents
+        "application/pdf",
+        "application/msword",
+        "application/vnd.ms-excel",
+        // Other
+        "application/octet-stream",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+    }
+    
+    for _, nonJSType := range nonJSTypes {
+        if contentType == nonJSType {
+            return true
+        }
+    }
+    
+    // Filter out any text/* types that aren't JavaScript
+    if strings.HasPrefix(contentType, "text/") && !isJavaScriptContentType(contentType) {
+        return true
+    }
+    
+    return false
+}
+
+// shouldProcessResponse checks if the response should be processed based on Content-Type and status code
+func shouldProcessResponse(resp *http.Response, urlStr string, config *Config) bool {
+    // Check status code first - silently skip invalid status codes
+    if !isValidStatusCode(resp.StatusCode) {
+        return false
+    }
+    
+    // Check Content-Type
+    contentType := resp.Header.Get("Content-Type")
+    
+    // If Content-Type explicitly indicates non-JavaScript, skip it
+    if isNonJavaScriptContentType(contentType) {
+        return false
+    }
+    
+    // If Content-Type is JavaScript, process it
+    if isJavaScriptContentType(contentType) {
+        return true
+    }
+    
+    // If Content-Type is unknown or missing, check URL extension as fallback
+    urlLower := strings.ToLower(urlStr)
+    hasJSExtension := strings.HasSuffix(urlLower, ".js") || 
+                     strings.Contains(urlLower, ".js?") ||
+                     strings.Contains(urlLower, ".js&") ||
+                     strings.Contains(urlLower, ".js#")
+    
+    // Only process if URL has .js extension
+    return hasJSExtension
+}
+
 func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundOnly bool) (string, map[string][]string) {
     var client *http.Client
 
-    transport := &http.Transport{}
-    
-    if skipTLS {
-        transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    transport := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLS},
+        DisableKeepAlives: false,
+        MaxIdleConns: 10,
+        IdleConnTimeout: 30 * time.Second,
     }
     
+    var clientTimeout time.Duration = 30 * time.Second
+    
     if proxy != "" {
-        proxyURL, err := url.Parse(proxy)
+        // Normalize proxy URL - add http:// if not present
+        proxyURLStr := proxy
+        if !strings.HasPrefix(proxy, "http://") && !strings.HasPrefix(proxy, "https://") {
+            proxyURLStr = "http://" + proxy
+        }
+        
+        proxyURL, err := url.Parse(proxyURLStr)
         if err != nil {
             fmt.Printf("Invalid proxy URL: %v\n", err)
             return urlStr, nil
         }
         transport.Proxy = http.ProxyURL(proxyURL)
+        
+        // When using proxy (like Burp), skip TLS verification to avoid certificate issues
+        transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+        
+        // Increase timeout for proxy connections (Burp interception may take time)
+        clientTimeout = 60 * time.Second
     }
     
-    client = &http.Client{Transport: transport}
+    client = &http.Client{
+        Transport: transport,
+        Timeout: clientTimeout,
+    }
 
     var sensitiveData map[string][]string
 
@@ -486,17 +1030,44 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundO
 
         resp, err := client.Do(req)
         if err != nil {
+            // Suppress TLS user canceled errors when using proxy (Burp interception)
+            if proxy == "" || !isTLSCanceledError(err) {
+                // Only print if not using proxy or if it's a different error
+            }
             return urlStr, nil
         }
         defer resp.Body.Close()
 
-        body, err := ioutil.ReadAll(resp.Body)
-        if err != nil {
-            fmt.Printf("Error reading response body: %v\n", err)
+        // Filter: Only process JavaScript content (create minimal config for filtering)
+        minimalConfig := &Config{Verbose: false}
+        if !shouldProcessResponse(resp, urlStr, minimalConfig) {
             return urlStr, nil
         }
 
-        sensitiveData = reportMatches(urlStr, body, regexPatterns, regex, foundOnly)
+        // Try to read the body, even if there might be an error (partial reads are useful)
+        body, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+            // Suppress TLS user canceled errors when using proxy (Burp may close connection)
+            if proxy == "" || !isTLSCanceledError(err) {
+                // Only show error if we got no data at all
+                if len(body) == 0 {
+                    fmt.Printf("Error reading response body: %v\n", err)
+                    return urlStr, nil
+                }
+                // If we got some data, continue processing it despite the error
+            } else if len(body) == 0 {
+                // Proxy error and no data - silently return
+                return urlStr, nil
+            }
+            // If we have data (even partial), continue to process it
+        }
+
+        // Process the body even if there was a read error (might have partial data)
+        if len(body) > 0 {
+            sensitiveData = reportMatches(urlStr, body, regexPatterns, regex, foundOnly)
+        } else {
+            sensitiveData = make(map[string][]string)
+        }
     } else {
         body, err := ioutil.ReadFile(urlStr)
         if err != nil {
@@ -583,9 +1154,16 @@ func reportMatches(source string, body []byte, regexPatterns map[string]*regexp.
 
     if len(matchesMap) > 0 {
         fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
+        // Mark that we found something
+        globalSeenMutex.Lock()
+        globalFoundAny = true
+        globalSeenMutex.Unlock()
     } else {
+        // Buffer MISSING messages instead of printing immediately
         if !foundOnly {
-            fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], source)
+            missingMutex.Lock()
+            missingMessages = append(missingMessages, source)
+            missingMutex.Unlock()
         }
     }
 
@@ -829,6 +1407,18 @@ func processJSFileForEndpoints(jsFile, regex, output string) {
 }
 
 func processInputsForEndpoints(url, list, output, regex, cookie, proxy string, threads int, skipTLS, foundOnly bool) {
+    // Create config for backward compatibility
+    config := &Config{
+        URL: url, List: list, Output: output, Regex: regex,
+        Cookies: cookie, Proxy: proxy, Threads: threads,
+        SkipTLS: skipTLS, FoundOnly: foundOnly,
+        Timeout: 30, Retry: 2,
+    }
+    processInputsForEndpointsWithConfig(url, config)
+    return
+}
+
+func processInputsForEndpointsOld(url, list, output, regex, cookie, proxy string, threads int, skipTLS, foundOnly bool) {
     var wg sync.WaitGroup
     urlChannel := make(chan string)
     
@@ -848,7 +1438,13 @@ func processInputsForEndpoints(url, list, output, regex, cookie, proxy string, t
         go func() {
             defer wg.Done()
             for u := range urlChannel {
-                endpoints := extractEndpointsFromURL(u, regex, cookie, proxy, skipTLS)
+                // Create minimal config for each request
+                config := &Config{
+                    Regex: regex, Cookies: cookie, Proxy: proxy,
+                    SkipTLS: skipTLS,
+                    Timeout: 30, Retry: 1,
+                }
+                endpoints := extractEndpointsFromURLWithConfig(u, config)
                 
                 if fileWriter != nil {
                     fmt.Fprintf(fileWriter, "URL: %s\n", u)
@@ -886,51 +1482,15 @@ func extractEndpointsFromFile(filePath, regex string) []string {
 }
 
 func extractEndpointsFromURL(urlStr, regex, cookie, proxy string, skipTLS bool) []string {
-    var client *http.Client
-    
-    transport := &http.Transport{}
-    
-    if skipTLS {
-        transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    // Create a minimal config for backward compatibility
+    config := &Config{
+        Proxy:   proxy,
+        Cookies: cookie,
+        SkipTLS: skipTLS,
+        Timeout: 30,
+        Retry:   1,
     }
-    
-    if proxy != "" {
-        proxyURL, err := url.Parse(proxy)
-        if err != nil {
-            return nil 
-        }
-        transport.Proxy = http.ProxyURL(proxyURL)
-    }
-    
-    client = &http.Client{Transport: transport}
-    
-    req, err := http.NewRequest("GET", urlStr, nil)
-    if err != nil {
-        return nil 
-    }
-    
-    if cookie != "" {
-        req.Header.Set("Cookie", cookie)
-    }
-    
-    resp, err := client.Do(req)
-    if err != nil {
-        return nil 
-    }
-    defer resp.Body.Close()
-    
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        return nil 
-    }
-    
-    parsedURL, err := url.Parse(urlStr)
-    if err != nil {
-        return nil
-    }
-    baseURL := parsedURL.Scheme + "://" + parsedURL.Host
-    
-    return extractEndpointsFromContent(string(body), regex, baseURL)
+    return extractEndpointsFromURLWithConfig(urlStr, config)
 }
 
 func extractEndpointsFromContent(content, regex, targetDomain string) []string {
@@ -1224,4 +1784,2148 @@ func contains(slice []string, item string) bool {
         }
     }
     return false
+}
+
+// createHTTPClientWithConfig creates an HTTP client with all advanced options
+func createHTTPClientWithConfig(config *Config) *http.Client {
+    transport := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: config.SkipTLS},
+        DisableKeepAlives: false,
+        MaxIdleConns: 10,
+        IdleConnTimeout: 30 * time.Second,
+    }
+    
+    clientTimeout := time.Duration(config.Timeout) * time.Second
+    
+    if config.Proxy != "" {
+        proxyURLStr := config.Proxy
+        if !strings.HasPrefix(config.Proxy, "http://") && !strings.HasPrefix(config.Proxy, "https://") {
+            proxyURLStr = "http://" + config.Proxy
+        }
+        
+        proxyURL, err := url.Parse(proxyURLStr)
+        if err != nil {
+            fmt.Printf("[%sERROR%s] Invalid proxy URL %s: %v\n", colors["RED"], colors["NC"], proxyURLStr, err)
+        } else {
+            transport.Proxy = http.ProxyURL(proxyURL)
+            transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+            clientTimeout = 60 * time.Second
+            if config.Verbose {
+                fmt.Printf("[%sINFO%s] Proxy configured: %s\n", colors["BLUE"], colors["NC"], proxyURLStr)
+            }
+        }
+    }
+    
+    return &http.Client{
+        Transport: transport,
+        Timeout: clientTimeout,
+    }
+}
+
+// makeRequestWithRetry makes an HTTP request with retry logic and rate limiting
+func makeRequestWithRetry(client *http.Client, req *http.Request, config *Config) (*http.Response, error) {
+    // Apply rate limiting
+    if config.RateLimit > 0 {
+        time.Sleep(time.Duration(config.RateLimit) * time.Millisecond)
+    }
+    
+    var resp *http.Response
+    var err error
+    
+    maxRetries := config.Retry
+    if maxRetries < 1 {
+        maxRetries = 1
+    }
+    
+    for attempt := 0; attempt < maxRetries; attempt++ {
+        resp, err = client.Do(req)
+        if err == nil {
+            return resp, nil
+        }
+        
+        // Don't retry on TLS cancellation errors (proxy interception)
+        if config.Proxy != "" && isTLSCanceledError(err) {
+            return nil, err
+        }
+        
+        // Retry with exponential backoff
+        if attempt < maxRetries-1 {
+            backoff := time.Duration(attempt+1) * time.Second
+            time.Sleep(backoff)
+        }
+    }
+    
+    return nil, err
+}
+
+// searchForSensitiveDataWithConfig enhanced version with all new features
+func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, map[string][]string) {
+    client := createHTTPClientWithConfig(config)
+    var sensitiveData map[string][]string
+
+    if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
+        req, err := http.NewRequest("GET", urlStr, nil)
+        if err != nil {
+            if config.Verbose {
+                fmt.Printf("Failed to create request for URL %s: %v\n", urlStr, err)
+            }
+            return urlStr, nil
+        }
+
+        // Apply custom headers
+        for _, header := range config.Headers {
+            parts := strings.SplitN(header, ":", 2)
+            if len(parts) == 2 {
+                key := strings.TrimSpace(parts[0])
+                value := strings.TrimSpace(parts[1])
+                req.Header.Set(key, value)
+                if config.Verbose {
+                    fmt.Printf("[%sINFO%s] Added header: %s: %s\n", colors["CYAN"], colors["NC"], key, value)
+                }
+            } else if config.Verbose {
+                fmt.Printf("[%sWARN%s] Invalid header format (expected 'Key: Value'): %s\n", colors["YELLOW"], colors["NC"], header)
+            }
+        }
+
+        // Apply custom User-Agent (randomly select from list if available)
+        if len(config.UserAgents) > 0 {
+            // Randomly select a user agent from the list for each request
+            rand.Seed(time.Now().UnixNano() + int64(len(req.URL.String())))
+            selectedUA := config.UserAgents[rand.Intn(len(config.UserAgents))]
+            req.Header.Set("User-Agent", selectedUA)
+        } else if config.UserAgent != "" {
+            req.Header.Set("User-Agent", config.UserAgent)
+        }
+
+        // Apply cookies
+        if config.Cookies != "" {
+            req.Header.Set("Cookie", config.Cookies)
+        }
+
+        resp, err := makeRequestWithRetry(client, req, config)
+        if err != nil {
+            // Don't show errors in quiet mode
+            if !config.Quiet {
+                // Always show errors in verbose mode, or if not using proxy
+                if config.Verbose || config.Proxy == "" {
+                    if !isTLSCanceledError(err) {
+                        fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
+                    } else if config.Verbose {
+                        fmt.Printf("[%sINFO%s] TLS connection canceled (proxy interception): %s\n", colors["YELLOW"], colors["NC"], urlStr)
+                    }
+                } else if !isTLSCanceledError(err) {
+                    // Show non-TLS errors even without verbose mode
+                    fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
+                }
+            }
+            return urlStr, nil
+        }
+        
+        if config.Verbose {
+            fmt.Printf("[%sINFO%s] Successfully fetched %s (Status: %d)\n", colors["GREEN"], colors["NC"], urlStr, resp.StatusCode)
+        }
+        defer resp.Body.Close()
+
+        // Filter: Only process JavaScript content
+        if !shouldProcessResponse(resp, urlStr, config) {
+            return urlStr, nil
+        }
+
+        body, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+            if config.Proxy == "" || !isTLSCanceledError(err) {
+                if len(body) == 0 && config.Verbose {
+                    fmt.Printf("Error reading response body: %v\n", err)
+                }
+            }
+            if len(body) == 0 {
+                return urlStr, nil
+            }
+        }
+
+        // Process JS analysis features
+        if len(body) > 0 {
+            processedBody := processJSAnalysis(body, config)
+            sensitiveData = reportMatchesWithConfig(urlStr, processedBody, config)
+        } else {
+            sensitiveData = make(map[string][]string)
+        }
+    } else {
+        body, err := ioutil.ReadFile(urlStr)
+        if err != nil {
+            if config.Verbose {
+                fmt.Printf("Error reading local file %s: %v\n", urlStr, err)
+            }
+            return urlStr, nil
+        }
+
+        processedBody := processJSAnalysis(body, config)
+        sensitiveData = reportMatchesWithConfig(urlStr, processedBody, config)
+    }
+
+    return urlStr, sensitiveData
+}
+
+// processJSAnalysis applies JS analysis features (deobfuscation, sourcemap, etc.)
+func processJSAnalysis(body []byte, config *Config) []byte {
+    content := string(body)
+    
+    // Deobfuscation (basic - can be enhanced)
+    if config.Deobfuscate {
+        content = basicDeobfuscate(content)
+    }
+    
+    // Source map parsing (placeholder - would need actual sourcemap library)
+    if config.SourceMap {
+        // Extract sourcemap URL and parse if available
+        content = extractSourceMap(content)
+    }
+    
+    // Eval analysis - extract strings from eval() calls
+    if config.Eval {
+        content = extractEvalContent(content)
+    }
+    
+    // Obfuscation detection
+    if config.ObfsDetect {
+        if isObfuscated(content) && config.Verbose {
+            fmt.Printf("[%sOBFS%s] Obfuscated code detected\n", colors["YELLOW"], colors["NC"])
+        }
+    }
+    
+    return []byte(content)
+}
+
+// Basic deobfuscation helpers
+func basicDeobfuscate(content string) string {
+    // Remove common obfuscation patterns
+    // This is a basic implementation - can be enhanced
+    content = strings.ReplaceAll(content, "\\x", "")
+    content = strings.ReplaceAll(content, "\\u", "")
+    return content
+}
+
+func extractSourceMap(content string) string {
+    // Extract sourcemap references
+    re := regexp.MustCompile(`//# sourceMappingURL=([^\s]+)`)
+    matches := re.FindAllStringSubmatch(content, -1)
+    if len(matches) > 0 {
+        // Would fetch and parse sourcemap here
+    }
+    return content
+}
+
+func extractEvalContent(content string) string {
+    // Extract content from eval() calls for analysis
+    re := regexp.MustCompile(`eval\s*\(\s*["']([^"']+)["']`)
+    matches := re.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            content += "\n// EVAL: " + match[1]
+        }
+    }
+    return content
+}
+
+func isObfuscated(content string) bool {
+    // Simple heuristics for obfuscation detection
+    if len(content) > 1000 && strings.Count(content, "\\x") > 50 {
+        return true
+    }
+    if strings.Contains(content, "eval(") && strings.Count(content, "String.fromCharCode") > 10 {
+        return true
+    }
+    return false
+}
+
+// extractURLParamsWithBaseURLs - Advanced extraction of GET parameters with their base URLs
+func extractURLParamsWithBaseURLs(content, source string) []string {
+    var resultURLs []string
+    seenURLs := make(map[string]bool)
+    
+    // Extract base URL from source if it's a URL
+    var baseURL string
+    var sourceDomain string // Store the main domain for fallback
+    if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+        parsedURL, err := url.Parse(source)
+        if err == nil {
+            baseURL = parsedURL.Scheme + "://" + parsedURL.Host
+            sourceDomain = parsedURL.Scheme + "://" + parsedURL.Host
+        }
+    }
+    
+    // Pattern 1: URLSearchParams.get() - Extract parameter names
+    // Match: urlParams.get('param_name') or searchParams.get("param_name")
+    urlParamsGetPattern := regexp.MustCompile(`(?:urlParams|searchParams|params|urlSearchParams|queryParams|locationParams)\.get\(["']([a-zA-Z0-9_\-\[\]]+)["']\)`)
+    matches := urlParamsGetPattern.FindAllStringSubmatch(content, -1)
+    paramSet := make(map[string]bool)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 2: URLSearchParams.getAll() - Extract parameter names
+    urlParamsGetAllPattern := regexp.MustCompile(`(?:urlParams|searchParams|params|urlSearchParams|queryParams)\.getAll\(["']([a-zA-Z0-9_\-\[\]]+)["']\)`)
+    matches = urlParamsGetAllPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 3: URL.searchParams.get() - Extract parameter names
+    urlSearchParamsPattern := regexp.MustCompile(`(?:new\s+URL\([^)]+\)|currentUrl|url|apiUrl|baseUrl)\.searchParams\.get\(["']([a-zA-Z0-9_\-\[\]]+)["']\)`)
+    matches = urlSearchParamsPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 4: Manual string parsing - Extract from split('&') patterns
+    manualParsePattern := regexp.MustCompile(`pair\[0\]\s*===\s*["']([a-zA-Z0-9_\-]+)["']`)
+    matches = manualParsePattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 5: Custom getParam() function calls
+    customGetParamPattern := regexp.MustCompile(`getParam\(["']([a-zA-Z0-9_\-]+)["']\)`)
+    matches = customGetParamPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 5b: URLSearchParams.has() - parameters that are checked
+    urlParamsHasPattern := regexp.MustCompile(`(?:urlParams|searchParams|params|urlSearchParams|queryParams)\.has\(["']([a-zA-Z0-9_\-\[\]]+)["']\)`)
+    matches = urlParamsHasPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 5c: Direct URL parameter extraction from query strings in code
+    directQueryPattern := regexp.MustCompile(`["']([a-zA-Z0-9_\-]+)["']\s*[:=]\s*(?:urlParams|searchParams|params)\.get\(`)
+    matches = directQueryPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            param := strings.TrimSpace(match[1])
+            if len(param) > 0 && len(param) < 100 {
+                paramSet[param] = true
+            }
+        }
+    }
+    
+    // Pattern 6: Fetch/Axios with URLSearchParams in URL (template literals and strings)
+    fetchWithParamsPattern := regexp.MustCompile(`fetch\(["'` + "`" + `]([^"'` + "`" + `]+)\?[^"'` + "`" + `]*["'` + "`" + `]`)
+    matches = fetchWithParamsPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            fullURL := match[1]
+            // Extract base URL
+            if strings.HasPrefix(fullURL, "http") {
+                parsedURL, err := url.Parse(fullURL)
+                if err == nil {
+                    base := parsedURL.Scheme + "://" + parsedURL.Host + parsedURL.Path
+                    // Extract params from query string
+                    if parsedURL.RawQuery != "" {
+                        queryParams, _ := url.ParseQuery(parsedURL.RawQuery)
+                        var params []string
+                        for key := range queryParams {
+                            if len(key) > 0 && len(key) < 100 {
+                                params = append(params, key)
+                            }
+                        }
+                        if len(params) > 0 {
+                            // Check if URL is from same base domain
+                            urlDomain := extractBaseDomain(parsedURL.Host)
+                            sourceBaseDomain := extractBaseDomain(extractDomain(source))
+                            if sourceBaseDomain == "" || urlDomain == sourceBaseDomain {
+                                sort.Strings(params)
+                                queryStr := strings.Join(params, "=&") + "="
+                                resultURL := base + "?" + queryStr
+                                if !seenURLs[resultURL] {
+                                    seenURLs[resultURL] = true
+                                    resultURLs = append(resultURLs, resultURL)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pattern 6b: Fetch with template literals containing parameters
+    fetchTemplatePattern := regexp.MustCompile(`fetch\(` + "`" + `([^` + "`" + `]+)\$\{[^}]+\}[^` + "`" + `]*` + "`" + `\)`)
+    matches = fetchTemplatePattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            urlPart := match[1]
+            // Extract base URL from template
+            if strings.Contains(urlPart, "?") {
+                parts := strings.Split(urlPart, "?")
+                if len(parts) > 0 {
+                    basePart := parts[0]
+                    if strings.HasPrefix(basePart, "http") {
+                        parsedURL, err := url.Parse(basePart)
+                        if err == nil {
+                            base := parsedURL.Scheme + "://" + parsedURL.Host + parsedURL.Path
+                            // Extract parameter names from template (look for ${var} patterns)
+                            paramVarPattern := regexp.MustCompile(`\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+                            varMatches := paramVarPattern.FindAllStringSubmatch(match[0], -1)
+                            var params []string
+                            for _, vm := range varMatches {
+                                if len(vm) > 1 {
+                                    // Try to find what this variable represents (might be a param name)
+                                    varName := vm[1]
+                                    // Look for this variable being assigned from urlParams.get()
+                                    varPattern := regexp.MustCompile(varName + `\s*=\s*(?:urlParams|searchParams|params)\.get\(["']([^"']+)["']\)`)
+                                    varAssignMatches := varPattern.FindAllStringSubmatch(content, -1)
+                                    if len(varAssignMatches) > 0 {
+                                        paramName := varAssignMatches[0][1]
+                                        params = append(params, paramName)
+                                    }
+                                }
+                            }
+                            // Also extract from query string part if present
+                            if len(parts) > 1 {
+                                queryPart := parts[1]
+                                queryParamPattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)=`)
+                                queryMatches := queryParamPattern.FindAllStringSubmatch(queryPart, -1)
+                                for _, qm := range queryMatches {
+                                    if len(qm) > 1 {
+                                        params = append(params, qm[1])
+                                    }
+                                }
+                            }
+                            if len(params) > 0 {
+                                // Check if URL is from same base domain
+                                urlDomain := extractBaseDomain(parsedURL.Host)
+                                sourceBaseDomain := extractBaseDomain(extractDomain(source))
+                                if sourceBaseDomain == "" || urlDomain == sourceBaseDomain {
+                                    sort.Strings(params)
+                                    queryStr := strings.Join(params, "=&") + "="
+                                    resultURL := base + "?" + queryStr
+                                    if !seenURLs[resultURL] {
+                                        seenURLs[resultURL] = true
+                                        resultURLs = append(resultURLs, resultURL)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pattern 7: Axios params object
+    axiosParamsPattern := regexp.MustCompile(`axios\.(?:get|post|put|delete|patch)\(["']([^"']+)["'][^)]*params\s*:\s*\{([^}]+)\}`)
+    matches = axiosParamsPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 2 {
+            apiURL := match[1]
+            paramsStr := match[2]
+            // Extract parameter names from params object
+            paramNamePattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
+            paramMatches := paramNamePattern.FindAllStringSubmatch(paramsStr, -1)
+            var params []string
+            for _, pm := range paramMatches {
+                if len(pm) > 1 {
+                    param := strings.TrimSpace(pm[1])
+                    if len(param) > 0 && len(param) < 100 {
+                        params = append(params, param)
+                    }
+                }
+            }
+            if len(params) > 0 {
+                // Build full URL
+                if !strings.HasPrefix(apiURL, "http") && baseURL != "" {
+                    apiURL = baseURL + apiURL
+                } else if !strings.HasPrefix(apiURL, "http") {
+                    // Use source domain if available, otherwise skip
+                    if sourceDomain != "" {
+                        apiURL = sourceDomain + apiURL
+                    } else {
+                        continue // Skip if no domain available
+                    }
+                }
+                // Check if URL is from same base domain
+                parsedAPIURL, err := url.Parse(apiURL)
+                if err == nil {
+                    urlDomain := extractBaseDomain(parsedAPIURL.Host)
+                    sourceBaseDomain := extractBaseDomain(extractDomain(source))
+                    if sourceBaseDomain == "" || urlDomain == sourceBaseDomain {
+                        sort.Strings(params)
+                        queryStr := strings.Join(params, "=&") + "="
+                        // Check if apiURL already has a query string
+                        separator := "?"
+                        if strings.Contains(apiURL, "?") {
+                            separator = "&"
+                        }
+                        resultURL := apiURL + separator + queryStr
+                        if !seenURLs[resultURL] {
+                            seenURLs[resultURL] = true
+                            resultURLs = append(resultURLs, resultURL)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pattern 8: URLSearchParams constructor with object
+    urlSearchParamsObjPattern := regexp.MustCompile(`new\s+URLSearchParams\([^)]*\{([^}]+)\}[^)]*\)`)
+    matches = urlSearchParamsObjPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            paramsStr := match[1]
+            paramNamePattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
+            paramMatches := paramNamePattern.FindAllStringSubmatch(paramsStr, -1)
+            var params []string
+            for _, pm := range paramMatches {
+                if len(pm) > 1 {
+                    param := strings.TrimSpace(pm[1])
+                    if len(param) > 0 && len(param) < 100 {
+                        params = append(params, param)
+                    }
+                }
+            }
+            if len(params) > 0 {
+                // Find associated URL in nearby context
+                contextStart := strings.LastIndex(content[:strings.Index(content, match[0])], "fetch(")
+                contextStart2 := strings.LastIndex(content[:strings.Index(content, match[0])], "axios.")
+                if contextStart2 > contextStart {
+                    contextStart = contextStart2
+                }
+                if contextStart > 0 {
+                    // Extract URL from context
+                    urlPattern := regexp.MustCompile(`["']([^"']+)["']`)
+                    context := content[contextStart:strings.Index(content, match[0])]
+                    urlMatches := urlPattern.FindAllStringSubmatch(context, -1)
+                    if len(urlMatches) > 0 {
+                        apiURL := urlMatches[0][1]
+                        if !strings.HasPrefix(apiURL, "http") && baseURL != "" {
+                            apiURL = baseURL + apiURL
+                        } else if !strings.HasPrefix(apiURL, "http") {
+                            // Use source domain if available, otherwise skip
+                            if sourceDomain != "" {
+                                apiURL = sourceDomain + apiURL
+                            } else {
+                                continue // Skip if no domain available
+                            }
+                        }
+                        // Check if URL is from same base domain
+                        parsedAPIURL, err := url.Parse(apiURL)
+                        if err == nil {
+                            urlDomain := extractBaseDomain(parsedAPIURL.Host)
+                            sourceBaseDomain := extractBaseDomain(extractDomain(source))
+                            if sourceBaseDomain == "" || urlDomain == sourceBaseDomain {
+                                sort.Strings(params)
+                                queryStr := strings.Join(params, "=&") + "="
+                                // Check if apiURL already has a query string
+                                separator := "?"
+                                if strings.Contains(apiURL, "?") {
+                                    separator = "&"
+                                }
+                                resultURL := apiURL + separator + queryStr
+                                if !seenURLs[resultURL] {
+                                    seenURLs[resultURL] = true
+                                    resultURLs = append(resultURLs, resultURL)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pattern 9: Direct URL with query parameters in strings
+    directURLPattern := regexp.MustCompile(`["'](https?://[^"']+\?[^"']+)["']`)
+    matches = directURLPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            fullURL := match[1]
+            parsedURL, err := url.Parse(fullURL)
+            if err == nil {
+                base := parsedURL.Scheme + "://" + parsedURL.Host + parsedURL.Path
+                if parsedURL.RawQuery != "" {
+                    queryParams, _ := url.ParseQuery(parsedURL.RawQuery)
+                    var params []string
+                    for key := range queryParams {
+                        if len(key) > 0 && len(key) < 100 {
+                            params = append(params, key)
+                        }
+                    }
+                    if len(params) > 0 {
+                        // Check if URL is from same base domain
+                        urlDomain := extractBaseDomain(parsedURL.Host)
+                        sourceBaseDomain := extractBaseDomain(extractDomain(source))
+                        if sourceBaseDomain == "" || urlDomain == sourceBaseDomain {
+                            sort.Strings(params)
+                            queryStr := strings.Join(params, "=&") + "="
+                            resultURL := base + "?" + queryStr
+                            if !seenURLs[resultURL] {
+                                seenURLs[resultURL] = true
+                                resultURLs = append(resultURLs, resultURL)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pattern 10: XHR.open() with parameters
+    xhrPattern := regexp.MustCompile(`\.open\(["'](?:GET|POST|PUT|DELETE|PATCH)["']\s*,\s*["']([^"']+\?[^"']+)["']`)
+    matches = xhrPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            fullURL := match[1]
+            parsedURL, err := url.Parse(fullURL)
+            if err == nil {
+                base := parsedURL.Scheme + "://" + parsedURL.Host + parsedURL.Path
+                if parsedURL.RawQuery != "" {
+                    queryParams, _ := url.ParseQuery(parsedURL.RawQuery)
+                    var params []string
+                    for key := range queryParams {
+                        if len(key) > 0 && len(key) < 100 {
+                            params = append(params, key)
+                        }
+                    }
+                    if len(params) > 0 {
+                        // Check if URL is from same base domain
+                        urlDomain := extractBaseDomain(parsedURL.Host)
+                        sourceBaseDomain := extractBaseDomain(extractDomain(source))
+                        if sourceBaseDomain == "" || urlDomain == sourceBaseDomain {
+                            sort.Strings(params)
+                            queryStr := strings.Join(params, "=&") + "="
+                            resultURL := base + "?" + queryStr
+                            if !seenURLs[resultURL] {
+                                seenURLs[resultURL] = true
+                                resultURLs = append(resultURLs, resultURL)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Pattern 11: Template literals with parameters
+    templateLiteralPattern := regexp.MustCompile(`\$\{([^}]+)\?[^}]*\}`)
+    matches = templateLiteralPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            // This is complex, skip for now or extract base URL
+        }
+    }
+    
+    // Always create URLs from all collected parameters (even if some URLs were found from fetch/axios)
+    if len(paramSet) > 0 {
+        // Group parameters by context - find parameters used together in same function
+        paramGroups := groupParamsByContext(content, paramSet)
+        
+        // Try to find base URLs in the content
+        baseURLPatterns := []*regexp.Regexp{
+            regexp.MustCompile(`["'](https?://[^"']+/[^"']*)["']`),
+            regexp.MustCompile(`baseURL\s*[:=]\s*["']([^"']+)["']`),
+            regexp.MustCompile(`apiBase\s*[:=]\s*["']([^"']+)["']`),
+            regexp.MustCompile(`API_URL\s*[:=]\s*["']([^"']+)["']`),
+            regexp.MustCompile(`endpointBase\s*[:=]\s*["']([^"']+)["']`),
+        }
+        
+        var foundBaseURL string
+        for _, pattern := range baseURLPatterns {
+            urlMatches := pattern.FindAllStringSubmatch(content, -1)
+            if len(urlMatches) > 0 {
+                foundBaseURL = urlMatches[0][1]
+                // Remove query string if present
+                if idx := strings.Index(foundBaseURL, "?"); idx != -1 {
+                    foundBaseURL = foundBaseURL[:idx]
+                }
+                if !strings.HasSuffix(foundBaseURL, "/") {
+                    foundBaseURL = strings.TrimRight(foundBaseURL, "/")
+                }
+                break
+            }
+        }
+        
+        if foundBaseURL == "" {
+            if baseURL != "" {
+                // Use the source domain root path when full path is unknown
+                foundBaseURL = baseURL
+            } else if sourceDomain != "" {
+                // Use source domain root when no base URL found
+                foundBaseURL = sourceDomain
+            } else {
+                // Skip if no domain available
+                return resultURLs
+            }
+        }
+        
+        // Create URLs for each parameter group
+        for _, group := range paramGroups {
+            if len(group) > 0 {
+                sort.Strings(group)
+                // Remove duplicates from group
+                uniqueGroup := []string{}
+                seenInGroup := make(map[string]bool)
+                for _, p := range group {
+                    if !seenInGroup[p] {
+                        seenInGroup[p] = true
+                        uniqueGroup = append(uniqueGroup, p)
+                    }
+                }
+                
+                if len(uniqueGroup) == 1 {
+                    // Single parameter - use root path
+                    singleURL := foundBaseURL + "/?" + uniqueGroup[0] + "="
+                    if !seenURLs[singleURL] {
+                        seenURLs[singleURL] = true
+                        resultURLs = append(resultURLs, singleURL)
+                    }
+                } else if len(uniqueGroup) > 1 {
+                    // Multiple parameters - join with &, use root path
+                    queryStr := strings.Join(uniqueGroup, "=&") + "="
+                    resultURL := foundBaseURL + "/?" + queryStr
+                    if !seenURLs[resultURL] {
+                        seenURLs[resultURL] = true
+                        resultURLs = append(resultURLs, resultURL)
+                    }
+                }
+            }
+        }
+        
+        // Also create individual URLs for each parameter (if not already created)
+        paramsList := make([]string, 0, len(paramSet))
+        for param := range paramSet {
+            paramsList = append(paramsList, param)
+        }
+        sort.Strings(paramsList)
+        for _, param := range paramsList {
+            // Use root path when full path is unknown
+            singleURL := foundBaseURL + "/?" + param + "="
+            if !seenURLs[singleURL] {
+                seenURLs[singleURL] = true
+                resultURLs = append(resultURLs, singleURL)
+            }
+        }
+    }
+    
+    // Filter URLs by domain - only include URLs from the same base domain as source
+    if sourceDomain != "" {
+        sourceBaseDomain := extractBaseDomain(extractDomain(source))
+        if sourceBaseDomain != "" {
+            filteredURLs := []string{}
+            for _, resultURL := range resultURLs {
+                // Extract domain from result URL
+                urlDomain := extractDomain(resultURL)
+                if urlDomain != "" {
+                    urlBaseDomain := extractBaseDomain(urlDomain)
+                    // Only include if it's from the same base domain
+                    if urlBaseDomain == sourceBaseDomain {
+                        filteredURLs = append(filteredURLs, resultURL)
+                    }
+                } else {
+                    // If we can't extract domain (relative URL), include it (it's from source domain)
+                    filteredURLs = append(filteredURLs, resultURL)
+                }
+            }
+            return filteredURLs
+        }
+    }
+    
+    return resultURLs
+}
+
+// groupParamsByContext groups parameters that are used together in the same function/context
+func groupParamsByContext(content string, paramSet map[string]bool) [][]string {
+    var groups [][]string
+    usedParams := make(map[string]bool)
+    
+    // Find function blocks and group parameters within them
+    // Look for common patterns where multiple params are used together
+    
+    // Pattern: Multiple .get() calls in sequence (likely same function)
+    urlParamsPattern := regexp.MustCompile(`(?:urlParams|searchParams|params|urlSearchParams|queryParams)\.get\(["']([a-zA-Z0-9_\-\[\]]+)["']\)`)
+    allMatches := urlParamsPattern.FindAllStringSubmatchIndex(content, -1)
+    
+    // Group consecutive parameter extractions (within 200 chars)
+    var currentGroup []string
+    lastPos := -1
+    
+    for _, match := range allMatches {
+        if len(match) >= 4 {
+            paramName := content[match[2]:match[3]]
+            currentPos := match[0]
+            
+            if paramSet[paramName] && !usedParams[paramName] {
+                if lastPos == -1 || (currentPos - lastPos) < 200 {
+                    // Same context
+                    currentGroup = append(currentGroup, paramName)
+                    usedParams[paramName] = true
+                } else {
+                    // New context
+                    if len(currentGroup) > 0 {
+                        groups = append(groups, currentGroup)
+                    }
+                    currentGroup = []string{paramName}
+                    usedParams[paramName] = true
+                }
+                lastPos = currentPos
+            }
+        }
+    }
+    
+    if len(currentGroup) > 0 {
+        groups = append(groups, currentGroup)
+    }
+    
+    // Also look for URLSearchParams object creation with multiple params
+    urlSearchParamsObjPattern := regexp.MustCompile(`new\s+URLSearchParams\([^)]*\{([^}]+)\}`)
+    matches := urlSearchParamsObjPattern.FindAllStringSubmatch(content, -1)
+    for _, match := range matches {
+        if len(match) > 1 {
+            paramsStr := match[1]
+            paramNamePattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
+            paramMatches := paramNamePattern.FindAllStringSubmatch(paramsStr, -1)
+            var group []string
+            for _, pm := range paramMatches {
+                if len(pm) > 1 {
+                    param := strings.TrimSpace(pm[1])
+                    if paramSet[param] && !usedParams[param] {
+                        group = append(group, param)
+                        usedParams[param] = true
+                    }
+                }
+            }
+            if len(group) > 0 {
+                groups = append(groups, group)
+            }
+        }
+    }
+    
+    return groups
+}
+
+// cleanURL removes trailing punctuation and invalid characters from URLs
+func cleanURL(urlStr string) string {
+    // Remove trailing punctuation: , ; \ ) | etc.
+    urlStr = strings.TrimRight(urlStr, ",;\\|)")
+    
+    // Remove any trailing quotes
+    urlStr = strings.Trim(urlStr, `"'`)
+    
+    // Remove any trailing special characters that are not valid in URLs
+    urlStr = strings.TrimRight(urlStr, " \t\n\r")
+    
+    return urlStr
+}
+
+// isValidURL checks if a URL is valid (proper format, not malformed)
+func isValidURL(urlStr string) bool {
+    // Parse the URL
+    parsedURL, err := url.Parse(urlStr)
+    if err != nil {
+        return false
+    }
+    
+    // Must have a valid scheme
+    if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+        return false
+    }
+    
+    // Must have a host
+    if parsedURL.Host == "" {
+        return false
+    }
+    
+    // Check for malformed port (e.g., :80x)
+    if strings.Contains(parsedURL.Host, ":") {
+        hostParts := strings.Split(parsedURL.Host, ":")
+        if len(hostParts) == 2 {
+            // Port must be numeric
+            port := hostParts[1]
+            for _, char := range port {
+                if char < '0' || char > '9' {
+                    return false // Invalid port (contains non-numeric characters)
+                }
+            }
+        }
+    }
+    
+    return true
+}
+
+// isPlaceholderURL checks if a URL is a placeholder/template (not a real URL)
+func isPlaceholderURL(urlStr string) bool {
+    urlLower := strings.ToLower(urlStr)
+    
+    // Common placeholder patterns
+    placeholders := []string{
+        "servername", "hostname", "domain.com", "example.com", "example.org",
+        "yourserver", "yourdomain", "localhost", "127.0.0.1", "0.0.0.0",
+        "server.com", "host.com", "domain.org", "site.com", "mydomain.com",
+        ":port/", "accounturl", "username", "password",
+    }
+    
+    for _, placeholder := range placeholders {
+        if strings.Contains(urlLower, placeholder) {
+            return true
+        }
+    }
+    
+    // Check for template variables like ${variable} or {variable} or %variable%
+    if strings.Contains(urlStr, "${") || strings.Contains(urlStr, "%{") || 
+       strings.Contains(urlStr, "{{") || strings.Contains(urlStr, "<%") {
+        return true
+    }
+    
+    return false
+}
+
+// isURLInComment checks if a URL appears to be in a JavaScript comment
+func isURLInComment(context, match string) bool {
+    // Find the position of the match in the context
+    matchPos := strings.Index(context, match)
+    if matchPos == -1 {
+        return false
+    }
+    
+    // Look backwards from the match to check for comment markers
+    beforeMatch := context[:matchPos]
+    
+    // Check for single-line comment (//)
+    // Find the last newline before the match
+    lastNewline := strings.LastIndex(beforeMatch, "\n")
+    if lastNewline != -1 {
+        lineBeforeMatch := beforeMatch[lastNewline+1:]
+        // If there's a // before the match on the same line, it's in a comment
+        if strings.Contains(lineBeforeMatch, "//") {
+            return true
+        }
+    } else {
+        // No newline found, check entire beforeMatch
+        if strings.Contains(beforeMatch, "//") {
+            return true
+        }
+    }
+    
+    // Check for multi-line comment (/* ... */)
+    // Find the last /* and */ before the match
+    lastCommentStart := strings.LastIndex(beforeMatch, "/*")
+    lastCommentEnd := strings.LastIndex(beforeMatch, "*/")
+    
+    // If /* is found and there's no */ after it (or */ comes before /*), we're in a comment
+    if lastCommentStart != -1 {
+        if lastCommentEnd == -1 || lastCommentEnd < lastCommentStart {
+            // We're inside a multi-line comment
+            return true
+        }
+    }
+    
+    return false
+}
+
+// isMatchInBase64DataURI checks if a match is inside a base64 data URI (e.g., data:image/png;base64,...)
+func isMatchInBase64DataURI(context, match string) bool {
+    // Find the position of the match in the context
+    matchPos := strings.Index(context, match)
+    if matchPos == -1 {
+        return false
+    }
+    
+    // Look backwards from the match position to find "base64,"
+    // This is more reliable than looking for the full data URI pattern
+    searchStart := matchPos - 300 // Look back up to 300 characters
+    if searchStart < 0 {
+        searchStart = 0
+    }
+    searchContext := context[searchStart:matchPos]
+    
+    // Find the last occurrence of "base64," before the match
+    base64Pos := strings.LastIndex(searchContext, "base64,")
+    if base64Pos == -1 {
+        return false
+    }
+    
+    // Check if there's a data URI pattern before "base64,"
+    // Pattern: data:image/[type];base64, or data:[type];base64,
+    dataURIPattern := regexp.MustCompile(`data:(?:image/[a-zA-Z0-9+\-]+|application/[a-zA-Z0-9+\-]+|text/[a-zA-Z0-9+\-]+);base64,`)
+    
+    // Get the text before "base64," to check for data URI pattern
+    beforeBase64 := searchContext[:base64Pos+6] // Include "base64," in the check
+    
+    // Check if we have a valid data URI pattern ending with "base64,"
+    // Look backwards from "base64," to find "data:"
+    dataPos := strings.LastIndex(beforeBase64, "data:")
+    if dataPos == -1 {
+        return false
+    }
+    
+    // Extract the potential data URI
+    potentialDataURI := searchContext[dataPos:base64Pos+6]
+    
+    // Check if it matches the data URI pattern
+    if dataURIPattern.MatchString(potentialDataURI) {
+        // The match is after "base64,", so it's part of base64 encoded data
+        return true
+    }
+    
+    return false
+}
+
+// isLikelyBase64MediaData checks if a match looks like base64-encoded media content
+func isLikelyBase64MediaData(context, match string) bool {
+    // Check if the match itself looks like base64 data
+    if !looksLikeBase64(match) {
+        return false
+    }
+    
+    // Find the position of the match in the context
+    matchPos := strings.Index(context, match)
+    if matchPos == -1 {
+        return false
+    }
+    
+    // Get surrounding context for analysis
+    contextStart := matchPos - 200
+    if contextStart < 0 {
+        contextStart = 0
+    }
+    contextEnd := matchPos + len(match) + 200
+    if contextEnd > len(context) {
+        contextEnd = len(context)
+    }
+    surroundingContext := context[contextStart:contextEnd]
+    
+    // Check for media-related indicators in surrounding context
+    mediaIndicators := []string{
+        "data:image", "data:video", "data:audio",
+        "base64,", "data:application/octet-stream",
+        "png", "jpg", "jpeg", "gif", "webp", "svg",
+        "mp4", "webm", "ogg", "wav", "mp3",
+        "font", "woff", "woff2", "ttf", "otf",
+        "modernizr", "polyfill", "encoded", "binary",
+    }
+    
+    lowerContext := strings.ToLower(surroundingContext)
+    for _, indicator := range mediaIndicators {
+        if strings.Contains(lowerContext, indicator) {
+            return true
+        }
+    }
+    
+    // Check for long base64 strings (likely media content)
+    if len(match) > 100 && hasHighBase64Entropy(match) {
+        return true
+    }
+    
+    // Check if it's part of a larger base64 string
+    if isPartOfLargerBase64String(context, matchPos, len(match)) {
+        return true
+    }
+    
+    return false
+}
+
+// looksLikeBase64 checks if a string looks like base64 encoded data
+func looksLikeBase64(s string) bool {
+    if len(s) < 16 { // Too short to be meaningful base64
+        return false
+    }
+    
+    // Base64 uses A-Z, a-z, 0-9, +, /, and = for padding
+    validChars := 0
+    for _, r := range s {
+        if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || 
+           (r >= '0' && r <= '9') || r == '+' || r == '/' || r == '=' {
+            validChars++
+        }
+    }
+    
+    // Should be mostly valid base64 characters
+    ratio := float64(validChars) / float64(len(s))
+    return ratio > 0.95
+}
+
+// hasHighBase64Entropy checks if the string has high entropy typical of encoded data
+func hasHighBase64Entropy(s string) bool {
+    if len(s) < 32 {
+        return false
+    }
+    
+    // Count character frequency
+    charCount := make(map[rune]int)
+    for _, r := range s {
+        charCount[r]++
+    }
+    
+    // Calculate entropy
+    entropy := 0.0
+    length := float64(len(s))
+    for _, count := range charCount {
+        if count > 0 {
+            p := float64(count) / length
+            entropy -= p * math.Log2(p)
+        }
+    }
+    
+    // Base64 encoded data typically has entropy > 4.5
+    // Media files when base64 encoded usually have high entropy
+    return entropy > 4.5
+}
+
+// isPartOfLargerBase64String checks if the match is part of a larger base64 encoded string
+func isPartOfLargerBase64String(context string, matchPos, matchLen int) bool {
+    // Look at characters before and after the match
+    expandedStart := matchPos - 50
+    if expandedStart < 0 {
+        expandedStart = 0
+    }
+    expandedEnd := matchPos + matchLen + 50
+    if expandedEnd > len(context) {
+        expandedEnd = len(context)
+    }
+    
+    expandedString := context[expandedStart:expandedEnd]
+    
+    // Check if the expanded string looks like base64
+    if len(expandedString) > len(context[matchPos:matchPos+matchLen])*2 && looksLikeBase64(expandedString) {
+        return true
+    }
+    
+    return false
+}
+
+// extractDomain extracts the domain from a URL string
+func extractDomain(urlStr string) string {
+    if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+        return ""
+    }
+    
+    parsedURL, err := url.Parse(urlStr)
+    if err != nil {
+        return ""
+    }
+    
+    host := parsedURL.Host
+    // Remove port if present
+    if idx := strings.Index(host, ":"); idx != -1 {
+        host = host[:idx]
+    }
+    
+    return host
+}
+
+// extractBaseDomain extracts the base domain (e.g., "target.com" from "assest.target.com")
+func extractBaseDomain(domain string) string {
+    if domain == "" {
+        return ""
+    }
+    
+    // Handle IP addresses - return as is
+    if net.ParseIP(domain) != nil {
+        return domain
+    }
+    
+    // Handle localhost and single-label domains
+    if !strings.Contains(domain, ".") {
+        return domain
+    }
+    
+    parts := strings.Split(domain, ".")
+    if len(parts) < 2 {
+        return domain
+    }
+    
+    // For most cases, base domain is last 2 parts (e.g., target.com)
+    // But handle special cases like .co.uk, .com.au, etc.
+    // For simplicity, we'll use last 2 parts for now
+    // This works for most common cases: target.com, example.org, etc.
+    if len(parts) >= 2 {
+        return parts[len(parts)-2] + "." + parts[len(parts)-1]
+    }
+    
+    return domain
+}
+
+// isSameBaseDomain checks if two domains share the same base domain (handles subdomains)
+func isSameBaseDomain(domain1, domain2 string) bool {
+    if domain1 == "" || domain2 == "" {
+        return false
+    }
+    
+    base1 := extractBaseDomain(domain1)
+    base2 := extractBaseDomain(domain2)
+    
+    return base1 == base2 && base1 != ""
+}
+
+// isMatchInURL checks if a match appears to be part of a URL from a different domain
+func isMatchInURL(context, match, sourceDomain string) bool {
+    if sourceDomain == "" {
+        return false // Can't compare if source is not a URL
+    }
+    
+    sourceBaseDomain := extractBaseDomain(sourceDomain)
+    if sourceBaseDomain == "" {
+        return false
+    }
+    
+    // Find all URLs in the context
+    urlPattern := regexp.MustCompile(`https?://[^\s"'<>\)]+`)
+    urls := urlPattern.FindAllString(context, -1)
+    
+    for _, urlStr := range urls {
+        // Check if the match is contained within this URL
+        if strings.Contains(urlStr, match) {
+            urlDomain := extractDomain(urlStr)
+            if urlDomain != "" {
+                urlBaseDomain := extractBaseDomain(urlDomain)
+                // If the URL's base domain doesn't match the source base domain, filter it out
+                if urlBaseDomain != "" && urlBaseDomain != sourceBaseDomain {
+                    return true // Match is part of a URL from a different base domain
+                }
+            }
+        }
+    }
+    
+    return false
+}
+
+// filterMatchesByDomain filters out matches that are from URLs on different domains
+func filterMatchesByDomain(matches []string, sourceURL string) []string {
+    sourceDomain := extractDomain(sourceURL)
+    if sourceDomain == "" {
+        return matches // Can't filter if source is not a URL
+    }
+    
+    sourceBaseDomain := extractBaseDomain(sourceDomain)
+    if sourceBaseDomain == "" {
+        return matches
+    }
+    
+    filtered := []string{}
+    urlPattern := regexp.MustCompile(`https?://[^\s"'<>]+`)
+    
+    for _, match := range matches {
+        shouldInclude := true
+        
+        // Check if match is a complete URL
+        if urlPattern.MatchString(match) {
+            matchDomain := extractDomain(match)
+            if matchDomain != "" {
+                matchBaseDomain := extractBaseDomain(matchDomain)
+                // Only include if it's from the same base domain
+                if matchBaseDomain != "" && matchBaseDomain != sourceBaseDomain {
+                    shouldInclude = false // Different base domain URL
+                }
+            }
+        } else {
+            // Check if match appears to be part of a URL by looking for common URL indicators
+            // This handles cases where the regex matched part of a URL string
+            
+            // Check for email addresses that might be part of URLs
+            if strings.Contains(match, "@") {
+                // Try to extract domain from email
+                emailParts := strings.Split(match, "@")
+                if len(emailParts) == 2 {
+                    emailDomain := emailParts[1]
+                    emailBaseDomain := extractBaseDomain(emailDomain)
+                    // If email domain is from different base domain, filter it out
+                    if emailBaseDomain != "" && emailBaseDomain != sourceBaseDomain {
+                        shouldInclude = false
+                    }
+                }
+            }
+            
+            // For other patterns (UUIDs, etc.), we rely on the context check in isMatchInURL
+            // This secondary filter is mainly for additional safety
+        }
+        
+        if shouldInclude {
+            filtered = append(filtered, match)
+        }
+    }
+    
+    return filtered
+}
+
+// reportMatchesWithConfig enhanced reporting with all security analysis features
+func reportMatchesWithConfig(source string, body []byte, config *Config) map[string][]string {
+    matchesMap := make(map[string][]string)
+    
+    // Select patterns based on config
+    patternsToUse := make(map[string]*regexp.Regexp)
+    
+    // Check if any Security Analysis flag is set
+    hasSecurityFlag := config.Secrets || config.Tokens || config.GraphQL || 
+                       config.Firebase || config.Links || config.Internal || 
+                       config.Bypass || config.Params || config.ParamURLs
+    
+    // JS Analysis flags (-d, -m, -e, -z) are modifiers that work WITH pattern detection
+    // They don't disable pattern detection, they just modify the JS before analysis
+    // So if ONLY JS Analysis flags are set, we should still run ALL patterns (normal mode)
+    
+    // If NO Security Analysis flags are set, use all basic patterns (normal mode)
+    // If Security Analysis flags ARE set, ONLY use those specific patterns
+    if !hasSecurityFlag {
+        // Normal mode: include all basic patterns
+        // This includes when ONLY JS Analysis flags are set (like -d alone)
+        for name, pattern := range regexPatterns {
+            patternsToUse[name] = pattern
+        }
+    }
+    
+    // Add specialized patterns based on flags (ONLY if flag is set)
+    if config.Secrets {
+        // Add only secret-related patterns from regexPatterns
+        secretPatterns := []string{
+            "Google API", "Firebase", "Amazon Aws Access Key ID", "Amazon Mws Auth Token",
+            "Facebook Access Token", "Authorization Basic", "Authorization Bearer", "Authorization Api",
+            "Twilio Api Key", "Twilio Account Sid", "Twilio App Sid", "Paypal Braintre Access Token",
+            "Square Oauth Secret", "Square Access Token", "Stripe Standard Api", "Stripe Restricted Api",
+            "Authorization Github Token", "Github Access Token", "Rsa Private Key", "Ssh Dsa Private Key",
+            "Ssh Dc Private Key", "Pgp Private Block", "Ssh Private Key", "Aws Api Key", "Slack Token",
+            "Ssh Priv Key", "Heroku Api Key", "Slack Webhook Url", "Dropbox Access Token",
+            "Salesforce Access Token", "Pem Private Key", "Google Cloud Sa Key", "Stripe Publishable Key",
+            "Azure Storage Account Key", "Instagram Access Token", "Generic Api Key", "Generic Secret",
+        }
+        for _, name := range secretPatterns {
+            if pattern, exists := regexPatterns[name]; exists {
+                patternsToUse[name] = pattern
+            }
+        }
+    }
+    
+    if config.Tokens {
+        // JWT patterns
+        jwtPattern := regexp.MustCompile(`ey[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*`)
+        patternsToUse["JWT Token"] = jwtPattern
+    }
+    
+    if config.Firebase {
+        // Firebase patterns
+        if pattern, exists := regexPatterns["Firebase"]; exists {
+            patternsToUse["Firebase"] = pattern
+        }
+        if pattern, exists := regexPatterns["Firebase Url"]; exists {
+            patternsToUse["Firebase Url"] = pattern
+        }
+    }
+    
+    if config.GraphQL {
+        // GraphQL patterns - more specific to avoid jQuery false positives
+        // Pattern 1: URLs containing /graphql path
+        graphqlPattern1 := regexp.MustCompile(`(?i)["']([^"']*\/graphql[^"']*)["']`)
+        patternsToUse["GraphQL URL"] = graphqlPattern1
+        
+        // Pattern 2: GraphQL endpoint in fetch/axios calls
+        graphqlPattern2 := regexp.MustCompile(`(?i)(?:fetch|axios|request|post|get)\s*\([^)]*["']([^"']*\/graphql[^"']*)["']`)
+        patternsToUse["GraphQL API Call"] = graphqlPattern2
+        
+        // Pattern 3: GraphQL variable assignments
+        graphqlPattern3 := regexp.MustCompile(`(?i)(?:graphql|gql)[\s]*[:=][\s]*["']([^"']+)["']`)
+        patternsToUse["GraphQL Endpoint"] = graphqlPattern3
+        
+        // Pattern 4: GraphQL query/mutation (NOT jQuery - must have query/mutation keyword)
+        graphqlPattern4 := regexp.MustCompile(`(?i)\b(?:query|mutation|subscription)\s+\w+\s*\{[^}]+\}`)
+        patternsToUse["GraphQL Query"] = graphqlPattern4
+        
+        // Pattern 5: GraphQL endpoint in config objects
+        graphqlPattern5 := regexp.MustCompile(`(?i)["'](?:graphql_?endpoint|graphql_?url|graphql_?api|gql_?endpoint)["']\s*[:=]\s*["']([^"']+)["']`)
+        patternsToUse["GraphQL Config"] = graphqlPattern5
+    }
+    
+    if config.Links {
+        // Extract URLs but exclude common trailing punctuation
+        linkPattern := regexp.MustCompile(`(https?://[^\s"'<>,;\\()]+)`)
+        patternsToUse["Link/URL"] = linkPattern
+    }
+    
+    // Extract parameters - Advanced URL parameter detection with base URLs (new -PU flag)
+    if config.ParamURLs {
+        // Use advanced extraction that associates parameters with URLs
+        paramURLs := extractURLParamsWithBaseURLs(string(body), source)
+        
+        // Global deduplication across all files
+        globalSeenMutex.Lock()
+        if len(paramURLs) > 0 {
+            globalFoundAny = true // Mark that we found something
+        }
+        for _, paramURL := range paramURLs {
+            // Only print if we haven't seen this URL before globally
+            if !globalSeenAll[paramURL] {
+                globalSeenAll[paramURL] = true
+                fmt.Println(paramURL)
+            }
+        }
+        globalSeenMutex.Unlock()
+        // Return early - don't run sensitive data detection when using -PU flag
+        // Return empty map to prevent any sensitive data from being printed
+        return make(map[string][]string)
+    }
+    
+    // Extract parameters - Basic parameter discovery (old -P flag behavior)
+    if config.Params {
+        paramSet := make(map[string]bool) // Use set to deduplicate
+        
+        // URL parameters: ?param=value or &param=value
+        urlParamPattern := regexp.MustCompile(`[?&]([a-zA-Z0-9_\-]+)\s*=`)
+        matches := urlParamPattern.FindAllStringSubmatch(string(body), -1)
+        for _, match := range matches {
+            if len(match) > 1 {
+                param := strings.TrimSpace(match[1])
+                if len(param) > 0 && len(param) < 100 {
+                    paramSet[param] = true
+                }
+            }
+        }
+        
+        // Function parameters in API calls: apiCall({param: value}) or apiCall("param", "value")
+        funcParamPattern := regexp.MustCompile(`(?:get|post|put|delete|patch|fetch|axios|request)\s*\([^)]*["']([a-zA-Z0-9_\-]+)["']\s*[:=]`)
+        matches = funcParamPattern.FindAllStringSubmatch(string(body), -1)
+        for _, match := range matches {
+            if len(match) > 1 {
+                param := strings.TrimSpace(match[1])
+                if len(param) > 0 && len(param) < 100 {
+                    paramSet[param] = true
+                }
+            }
+        }
+        
+        // Query string parameters: ?key=value patterns
+        queryPattern := regexp.MustCompile(`["']([^"']*\?[a-zA-Z0-9_\-]+=)`)
+        matches = queryPattern.FindAllStringSubmatch(string(body), -1)
+        for _, match := range matches {
+            if len(match) > 1 {
+                queryStr := match[1]
+                // Extract individual params from query string
+                paramParts := regexp.MustCompile(`([a-zA-Z0-9_\-]+)=`).FindAllStringSubmatch(queryStr, -1)
+                for _, part := range paramParts {
+                    if len(part) > 1 {
+                        param := strings.TrimSpace(part[1])
+                        if len(param) > 0 && len(param) < 100 {
+                            paramSet[param] = true
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also look for common parameter patterns: paramName: or "paramName":
+        commonParamPattern := regexp.MustCompile(`["']?([a-zA-Z0-9_\-]{2,50})["']?\s*[:=]\s*["']?[^"',}\s)]`)
+        matches = commonParamPattern.FindAllStringSubmatch(string(body), -1)
+        for _, match := range matches {
+            if len(match) > 1 {
+                param := strings.TrimSpace(match[1])
+                // Filter out common JS keywords
+                if len(param) > 1 && len(param) < 100 && 
+                   param != "function" && param != "return" && param != "var" && 
+                   param != "let" && param != "const" && param != "if" && 
+                   param != "else" && param != "for" && param != "while" {
+                    paramSet[param] = true
+                }
+            }
+        }
+        
+        // Convert set to slice
+        for param := range paramSet {
+            matchesMap["Parameter"] = append(matchesMap["Parameter"], param)
+        }
+    }
+    
+    // Filter by domain scope
+    if config.Domain != "" {
+        if !strings.Contains(source, config.Domain) {
+            return matchesMap
+        }
+    }
+    
+    // Filter by extension
+    if config.Ext != "" {
+        extList := strings.Split(config.Ext, ",")
+        matched := false
+        for _, ext := range extList {
+            ext = strings.TrimSpace(ext)
+            if strings.HasSuffix(source, ext) {
+                matched = true
+                break
+            }
+        }
+        if !matched {
+            return matchesMap
+        }
+    }
+    
+    // Run pattern matching
+    bodyStr := string(body)
+    sourceDomain := extractDomain(source)
+    
+    for name, pattern := range patternsToUse {
+        if pattern.Match(body) {
+            // Find all matches with their positions to check context
+            allMatches := pattern.FindAllStringSubmatchIndex(bodyStr, -1)
+            matches := []string{}
+            
+            for _, matchIndex := range allMatches {
+                if len(matchIndex) >= 2 {
+                    // Extract the match - use capture group if available, otherwise use full match
+                    var match string
+                    var start, end int
+                    if len(matchIndex) >= 4 && matchIndex[2] != -1 && matchIndex[3] != -1 {
+                        // Use first capture group if available
+                        match = bodyStr[matchIndex[2]:matchIndex[3]]
+                        start = matchIndex[2]
+                        end = matchIndex[3]
+                    } else {
+                        // Use full match
+                        match = bodyStr[matchIndex[0]:matchIndex[1]]
+                        start = matchIndex[0]
+                        end = matchIndex[1]
+                    }
+                    
+                    // Check context around the match to see if it's part of a URL
+                    
+                    // Look at surrounding context (50 chars before and after for URL check)
+                    contextStart := start - 50
+                    if contextStart < 0 {
+                        contextStart = 0
+                    }
+                    contextEnd := end + 50
+                    if contextEnd > len(bodyStr) {
+                        contextEnd = len(bodyStr)
+                    }
+                    context := bodyStr[contextStart:contextEnd]
+                    
+                    // Check if match is part of a URL in the context
+                    if isMatchInURL(context, match, sourceDomain) {
+                        continue // Skip this match - it's from a different domain URL
+                    }
+                    
+                    // For base64 check, we need more context (200 chars before)
+                    base64ContextStart := start - 200
+                    if base64ContextStart < 0 {
+                        base64ContextStart = 0
+                    }
+                    base64ContextEnd := end + 50
+                    if base64ContextEnd > len(bodyStr) {
+                        base64ContextEnd = len(bodyStr)
+                    }
+                    base64Context := bodyStr[base64ContextStart:base64ContextEnd]
+                    
+                    // Check if match is inside a base64 data URI (e.g., data:image/png;base64,...)
+                    if isMatchInBase64DataURI(base64Context, match) {
+                        continue // Skip this match - it's part of base64 encoded image/data
+                    }
+                    
+                    // Check if match looks like base64-encoded media data (improved detection)
+                    if isLikelyBase64MediaData(base64Context, match) {
+                        continue // Skip this match - it's likely base64 encoded media content
+                    }
+                    
+                    // For Links flag, clean up URLs and filter
+                    if config.Links && (name == "Link/URL") {
+                        // Clean trailing punctuation and invalid characters
+                        match = cleanURL(match)
+                        
+                        // Skip if URL is empty after cleaning
+                        if match == "" {
+                            continue
+                        }
+                        
+                        // Validate URL format (skip malformed URLs like http://example.com:80x/)
+                        if !isValidURL(match) {
+                            continue
+                        }
+                        
+                        // Skip placeholder/template URLs (like http://servername:port/accountURL)
+                        if isPlaceholderURL(match) {
+                            continue
+                        }
+                        
+                        // Check if URL is in a comment - skip if it is
+                        if isURLInComment(context, match) {
+                            continue
+                        }
+                        
+                        // Filter: only show URLs from SAME base domain (user wants their own domain URLs)
+                        // Skip external domains (like ad360plus.com, MuazKhan.com)
+                        matchDomain := extractDomain(match)
+                        if matchDomain != "" && sourceDomain != "" {
+                            matchBaseDomain := extractBaseDomain(matchDomain)
+                            sourceBaseDomain := extractBaseDomain(sourceDomain)
+                            // Skip URLs from DIFFERENT base domains (external URLs)
+                            if matchBaseDomain != sourceBaseDomain {
+                                continue
+                            }
+                        }
+                    }
+                    
+                    matches = append(matches, match)
+                }
+            }
+            
+            if len(matches) > 0 {
+                // Additional filtering for known false positives
+                matches = filterMatchesByDomain(matches, source)
+                
+                if len(matches) > 0 {
+                    if config.Regex != "" {
+                        filterPattern, err := regexp.Compile(config.Regex)
+                        if err == nil {
+                            filteredMatches := []string{}
+                            for _, match := range matches {
+                                if filterPattern.MatchString(match) {
+                                    filteredMatches = append(filteredMatches, match)
+                                }
+                            }
+                            if len(filteredMatches) > 0 {
+                                matchesMap[name] = append(matchesMap[name], filteredMatches...)
+                            }
+                        }
+                    } else {
+                        matchesMap[name] = append(matchesMap[name], matches...)
+                    }
+                }
+            }
+        }
+    }
+    
+    // Filter internal endpoints only
+    if config.Internal {
+        filtered := make(map[string][]string)
+        for name, matches := range matchesMap {
+            for _, match := range matches {
+                if strings.Contains(match, "internal") || strings.Contains(match, "private") ||
+                   strings.Contains(match, "127.0.0.1") || strings.Contains(match, "localhost") {
+                    filtered[name] = append(filtered[name], match)
+                }
+            }
+        }
+        matchesMap = filtered
+    }
+    
+    // Output formatting
+    if len(matchesMap) > 0 {
+        // Special handling for Params flag - just show parameter names, one per line
+        if config.Params && len(matchesMap["Parameter"]) > 0 {
+            // Global deduplication across all files
+            globalSeenMutex.Lock()
+            globalFoundAny = true // Mark that we found something
+            for _, param := range matchesMap["Parameter"] {
+                // Only print if we haven't seen this parameter before globally
+                if !globalSeenParams[param] {
+                    globalSeenParams[param] = true
+                    fmt.Println(param)
+                }
+            }
+            globalSeenMutex.Unlock()
+            return matchesMap
+        }
+        
+        if config.JSON {
+            outputJSON(source, matchesMap)
+        } else if config.CSV {
+            outputCSV(source, matchesMap)
+        } else if config.Burp {
+            outputBurp(source, matchesMap)
+        } else {
+            // Show FOUND message (unless quiet mode)
+            if !config.Quiet {
+                fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
+            }
+            // Global deduplication across all files
+            globalSeenMutex.Lock()
+            globalFoundAny = true // Mark that we found something
+            for name, matches := range matchesMap {
+                for _, match := range matches {
+                    key := name + ":" + match
+                    // Only print if we haven't seen this match before globally
+                    if !globalSeenAll[key] {
+                        globalSeenAll[key] = true
+                        fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                    }
+                }
+            }
+            globalSeenMutex.Unlock()
+        }
+    } else {
+        // Don't show MISSING if:
+        // 1. FoundOnly flag is set
+        // 2. ANY flag is set (Security Analysis OR JS Analysis flags)
+        // 3. Quiet mode is enabled
+        // MISSING messages should only show in pure "normal" mode (no flags at all)
+        hasAnyFlag := config.Params || config.ParamURLs || config.Secrets || config.Tokens || 
+                     config.GraphQL || config.Firebase || config.Links || config.Internal || 
+                     config.Bypass || config.ExtractEndpoints || config.Deobfuscate || 
+                     config.SourceMap || config.Eval || config.ObfsDetect
+        
+        // Buffer MISSING messages only for pure normal mode (no flags at all)
+        if !config.FoundOnly && !hasAnyFlag && !config.Quiet {
+            globalSeenMutex.Lock()
+            foundAny := globalFoundAny
+            globalSeenMutex.Unlock()
+            
+            // Only buffer if no findings have been made yet
+            if !foundAny {
+                missingMutex.Lock()
+                missingMessages = append(missingMessages, source)
+                missingMutex.Unlock()
+            }
+        }
+    }
+    
+    return matchesMap
+}
+
+// Output formatters
+func outputJSON(source string, matchesMap map[string][]string) {
+    result := map[string]interface{}{
+        "source": source,
+        "matches": matchesMap,
+    }
+    jsonData, _ := json.MarshalIndent(result, "", "  ")
+    fmt.Println(string(jsonData))
+}
+
+func outputCSV(source string, matchesMap map[string][]string) {
+    writer := csv.NewWriter(os.Stdout)
+    writer.Write([]string{"Source", "Type", "Value"})
+    for name, matches := range matchesMap {
+        for _, match := range matches {
+            writer.Write([]string{source, name, match})
+        }
+    }
+    writer.Flush()
+}
+
+func outputBurp(source string, matchesMap map[string][]string) {
+    // Burp Suite format (simplified)
+    for name, matches := range matchesMap {
+        for _, match := range matches {
+            fmt.Printf("%s\t%s\t%s\n", source, name, match)
+        }
+    }
+}
+
+// Wrapper functions using Config - enhanced versions
+func processInputsWithConfig(url string, config *Config) {
+    // Reset global state for new processing session
+    globalSeenMutex.Lock()
+    globalFoundAny = false
+    globalSeenMutex.Unlock()
+    missingMutex.Lock()
+    missingMessages = missingMessages[:0]
+    missingMutex.Unlock()
+    
+    // Use crawling if depth > 1
+    if config.CrawlDepth > 1 && url != "" {
+        visited := make(map[string]bool)
+        crawlAndProcessJS(url, config, config.CrawlDepth, visited)
+        return
+    }
+    
+    var wg sync.WaitGroup
+    urlChannel := make(chan string)
+
+    var fileWriter *os.File
+    if config.Output != "" {
+        var err error
+        fileWriter, err = os.Create(config.Output)
+        if err != nil {
+            fmt.Printf("Error creating output file: %v\n", err)
+            return
+        }
+        defer fileWriter.Close()
+    }
+
+    for i := 0; i < config.Threads; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for u := range urlChannel {
+                _, sensitiveData := searchForSensitiveDataWithConfig(u, config)
+
+                // Don't print sensitive data if ParamURLs flag is set (user only wants URL params)
+                if !config.ParamURLs {
+                    if fileWriter != nil {
+                        fmt.Fprintln(fileWriter, "URL:", u)
+                        for name, matches := range sensitiveData {
+                            for _, match := range matches {
+                                fmt.Fprintf(fileWriter, "Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                            }
+                        }
+                    }
+                }
+            }
+        }()
+    }
+
+    if err := enqueueURLs(url, config.List, urlChannel, config.Regex); err != nil {
+        fmt.Printf("Error in input processing: %v\n", err)
+        close(urlChannel)
+        return
+    }
+
+    close(urlChannel)
+    wg.Wait()
+    
+    // Print buffered MISSING messages only if no findings were made
+    // AND no flags are set (pure normal mode only)
+    globalSeenMutex.Lock()
+    foundAny := globalFoundAny
+    globalSeenMutex.Unlock()
+    
+    hasAnyFlag := config.Params || config.ParamURLs || config.Secrets || config.Tokens || 
+                 config.GraphQL || config.Firebase || config.Links || config.Internal || 
+                 config.Bypass || config.ExtractEndpoints || config.Deobfuscate || 
+                 config.SourceMap || config.Eval || config.ObfsDetect
+    
+    if !foundAny && !config.FoundOnly && !hasAnyFlag && !config.Quiet {
+        missingMutex.Lock()
+        for _, msg := range missingMessages {
+            fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], msg)
+        }
+        missingMessages = missingMessages[:0] // Clear the buffer
+        missingMutex.Unlock()
+    } else {
+        // Clear the buffer if findings were made or specific flags are set
+        missingMutex.Lock()
+        missingMessages = missingMessages[:0]
+        missingMutex.Unlock()
+    }
+}
+
+func processInputsForEndpointsWithConfig(url string, config *Config) {
+    // Use enhanced endpoint extraction with config
+    var wg sync.WaitGroup
+    urlChannel := make(chan string)
+    
+    var fileWriter *os.File
+    if config.Output != "" {
+        var err error
+        fileWriter, err = os.Create(config.Output)
+        if err != nil {
+            fmt.Printf("Error creating output file: %v\n", err)
+            return
+        }
+        defer fileWriter.Close()
+    }
+    
+    for i := 0; i < config.Threads; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for u := range urlChannel {
+                endpoints := extractEndpointsFromURLWithConfig(u, config)
+                
+                if fileWriter != nil {
+                    fmt.Fprintf(fileWriter, "URL: %s\n", u)
+                    for _, endpoint := range endpoints {
+                        fmt.Fprintf(fileWriter, "ENDPOINT: %s\n", endpoint)
+                    }
+                    fmt.Fprintln(fileWriter, "")
+                } else {
+                    for _, endpoint := range endpoints {
+                        fmt.Println(endpoint)
+                    }
+                }
+            }
+        }()
+    }
+    
+    if err := enqueueURLs(url, config.List, urlChannel, config.Regex); err != nil {
+        fmt.Printf("Error in input processing: %v\n", err)
+        close(urlChannel)
+        return
+    }
+    
+    close(urlChannel)
+    wg.Wait()
+}
+
+func processJSFileWithConfig(jsFile string, config *Config) {
+    // Reset global state for new processing session
+    globalSeenMutex.Lock()
+    globalFoundAny = false
+    globalSeenMutex.Unlock()
+    missingMutex.Lock()
+    missingMessages = missingMessages[:0]
+    missingMutex.Unlock()
+    
+    if _, err := os.Stat(jsFile); os.IsNotExist(err) {
+        fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
+    } else if err != nil {
+        if !config.Quiet {
+            fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
+        }
+    } else {
+        if !config.Quiet {
+            fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
+        }
+        searchForSensitiveDataWithConfig(jsFile, config)
+        
+        // Print buffered MISSING messages only if no findings were made
+        // AND no flags are set (pure normal mode only)
+        globalSeenMutex.Lock()
+        foundAny := globalFoundAny
+        globalSeenMutex.Unlock()
+        
+        hasAnyFlag := config.Params || config.ParamURLs || config.Secrets || config.Tokens || 
+                     config.GraphQL || config.Firebase || config.Links || config.Internal || 
+                     config.Bypass || config.ExtractEndpoints || config.Deobfuscate || 
+                     config.SourceMap || config.Eval || config.ObfsDetect
+        
+        if !foundAny && !config.FoundOnly && !hasAnyFlag && !config.Quiet {
+            missingMutex.Lock()
+            for _, msg := range missingMessages {
+                fmt.Printf("[%sMISSING%s] No sensitive data found at: %s\n", colors["BLUE"], colors["NC"], msg)
+            }
+            missingMessages = missingMessages[:0] // Clear the buffer
+            missingMutex.Unlock()
+        } else {
+            // Clear the buffer if findings were made or specific flags are set
+            missingMutex.Lock()
+            missingMessages = missingMessages[:0]
+            missingMutex.Unlock()
+        }
+    }
+}
+
+func processJSFileForEndpointsWithConfig(jsFile string, config *Config) {
+    if _, err := os.Stat(jsFile); os.IsNotExist(err) {
+        fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
+        return
+    } else if err != nil {
+        fmt.Printf("[%sERROR%s] Unable to access file %s: %v\n", colors["RED"], colors["NC"], jsFile, err)
+        return
+    }
+    
+    endpoints := extractEndpointsFromFile(jsFile, config.Regex)
+    
+    if config.Output != "" {
+        writeEndpointsToFile(endpoints, config.Output, jsFile)
+    } else {
+        displayEndpoints(endpoints, jsFile)
+    }
+}
+
+// extractEndpointsFromURLWithConfig enhanced endpoint extraction with config
+func extractEndpointsFromURLWithConfig(urlStr string, config *Config) []string {
+    client := createHTTPClientWithConfig(config)
+    
+    req, err := http.NewRequest("GET", urlStr, nil)
+    if err != nil {
+        return nil 
+    }
+    
+    // Apply custom headers
+    for _, header := range config.Headers {
+        parts := strings.SplitN(header, ":", 2)
+        if len(parts) == 2 {
+            key := strings.TrimSpace(parts[0])
+            value := strings.TrimSpace(parts[1])
+            req.Header.Set(key, value)
+            if config.Verbose {
+                fmt.Printf("[%sINFO%s] Added header: %s: %s\n", colors["CYAN"], colors["NC"], key, value)
+            }
+        } else if config.Verbose {
+            fmt.Printf("[%sWARN%s] Invalid header format (expected 'Key: Value'): %s\n", colors["YELLOW"], colors["NC"], header)
+        }
+    }
+    
+    // Apply custom User-Agent (randomly select from list if available)
+    if len(config.UserAgents) > 0 {
+        // Randomly select a user agent from the list for each request
+        rand.Seed(time.Now().UnixNano() + int64(len(req.URL.String())))
+        selectedUA := config.UserAgents[rand.Intn(len(config.UserAgents))]
+        req.Header.Set("User-Agent", selectedUA)
+        if config.Verbose {
+            fmt.Printf("[%sINFO%s] Using User-Agent: %s\n", colors["CYAN"], colors["NC"], selectedUA)
+        }
+    } else if config.UserAgent != "" {
+        req.Header.Set("User-Agent", config.UserAgent)
+        if config.Verbose {
+            fmt.Printf("[%sINFO%s] Using User-Agent: %s\n", colors["CYAN"], colors["NC"], config.UserAgent)
+        }
+    }
+    
+    if config.Cookies != "" {
+        req.Header.Set("Cookie", config.Cookies)
+    }
+    
+    resp, err := makeRequestWithRetry(client, req, config)
+    if err != nil {
+        // Don't show errors in quiet mode
+        if !config.Quiet {
+            if config.Verbose || config.Proxy == "" {
+                if !isTLSCanceledError(err) {
+                    fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
+                } else if config.Verbose {
+                    fmt.Printf("[%sINFO%s] TLS connection canceled (proxy interception): %s\n", colors["YELLOW"], colors["NC"], urlStr)
+                }
+            } else if !isTLSCanceledError(err) {
+                fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
+            }
+        }
+        return nil 
+    }
+    
+    if config.Verbose {
+        fmt.Printf("[%sINFO%s] Successfully fetched %s (Status: %d)\n", colors["GREEN"], colors["NC"], urlStr, resp.StatusCode)
+    }
+    defer resp.Body.Close()
+    
+    // Filter: Only process JavaScript content
+    if !shouldProcessResponse(resp, urlStr, config) {
+        return nil
+    }
+    
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        if len(body) == 0 {
+            return nil 
+        }
+    }
+    
+    // Process JS analysis
+    processedBody := processJSAnalysis(body, config)
+    
+    parsedURL, err := url.Parse(urlStr)
+    if err != nil {
+        return nil
+    }
+    baseURL := parsedURL.Scheme + "://" + parsedURL.Host
+    
+    return extractEndpointsFromContent(string(processedBody), config.Regex, baseURL)
+}
+
+// crawlAndProcessJS recursively crawls and processes JS files
+func crawlAndProcessJS(initialURL string, config *Config, depth int, visited map[string]bool) {
+    if depth <= 0 || visited[initialURL] {
+        return
+    }
+    visited[initialURL] = true
+    
+    client := createHTTPClientWithConfig(config)
+    req, err := http.NewRequest("GET", initialURL, nil)
+    if err != nil {
+        return
+    }
+    
+    // Apply headers
+    for _, header := range config.Headers {
+        parts := strings.SplitN(header, ":", 2)
+        if len(parts) == 2 {
+            req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+        }
+    }
+    
+    // Apply custom User-Agent (randomly select from list if available)
+    if len(config.UserAgents) > 0 {
+        // Randomly select a user agent from the list for each request
+        rand.Seed(time.Now().UnixNano() + int64(len(req.URL.String())))
+        selectedUA := config.UserAgents[rand.Intn(len(config.UserAgents))]
+        req.Header.Set("User-Agent", selectedUA)
+    } else if config.UserAgent != "" {
+        req.Header.Set("User-Agent", config.UserAgent)
+    }
+    
+    if config.Cookies != "" {
+        req.Header.Set("Cookie", config.Cookies)
+    }
+    
+    resp, err := makeRequestWithRetry(client, req, config)
+    if err != nil {
+        return
+    }
+    defer resp.Body.Close()
+    
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return
+    }
+    
+    // Process current page
+    searchForSensitiveDataWithConfig(initialURL, config)
+    
+    // Find JS file references
+    jsPattern := regexp.MustCompile(`(?:src|href)\s*=\s*["']([^"']+\.js[^"']*)["']`)
+    matches := jsPattern.FindAllStringSubmatch(string(body), -1)
+    
+    parsedURL, err := url.Parse(initialURL)
+    if err != nil {
+        return
+    }
+    baseURL := parsedURL.Scheme + "://" + parsedURL.Host
+    
+    for _, match := range matches {
+        if len(match) > 1 {
+            jsURL := match[1]
+            if !strings.HasPrefix(jsURL, "http") {
+                if strings.HasPrefix(jsURL, "//") {
+                    jsURL = parsedURL.Scheme + ":" + jsURL
+                } else if strings.HasPrefix(jsURL, "/") {
+                    jsURL = baseURL + jsURL
+                } else {
+                    jsURL = baseURL + "/" + jsURL
+                }
+            }
+            
+            // Check domain scope
+            if config.Domain != "" && !strings.Contains(jsURL, config.Domain) {
+                continue
+            }
+            
+            // Check extension filter
+            if config.Ext != "" {
+                extList := strings.Split(config.Ext, ",")
+                matched := false
+                for _, ext := range extList {
+                    ext = strings.TrimSpace(ext)
+                    if strings.HasSuffix(jsURL, ext) {
+                        matched = true
+                        break
+                    }
+                }
+                if !matched {
+                    continue
+                }
+            }
+            
+            // Recursively process
+            if !visited[jsURL] {
+                crawlAndProcessJS(jsURL, config, depth-1, visited)
+            }
+        }
+    }
 }
