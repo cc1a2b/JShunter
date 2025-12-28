@@ -386,7 +386,7 @@ Licensed under MIT License - free for commercial and personal use
 
 ---
 
-## 💖 Support
+##  Support
 
 If JSHunter helps with your security research or professional work:
 
