@@ -73,7 +73,7 @@
 - **🔄 Intelligent Retry** (`-y`): Automatic retry mechanism with exponential backoff for failed requests
 
 **Professional Integration:**
-- **🔗 Proxy Support** (`-p`): Full Burp Suite and custom proxy integration (HTTP/HTTPS)
+- **🔗 Proxy Support** (`-p`): Full Burp Suite and custom proxy integration (HTTP/HTTPS/SOCKS5)
 - **🔒 TLS Flexibility** (`-k`): Optional certificate verification bypass for testing environments
 - **🎯 Thread Control** (`-t`): Configurable concurrent request handling for optimal performance
 
@@ -246,6 +246,9 @@ jshunter -l targets.txt -s -x -F -g -j -o security_findings.json
 # Stealth scanning with Burp Suite integration
 jshunter -l targets.txt -p 127.0.0.1:8080 -s -g -F -n -o burp_findings.txt
 
+# Scanning through SOCKS5 proxy (Tor, SSH tunnel, etc.)
+jshunter -l targets.txt -p socks5://127.0.0.1:9050 -s -x -F
+
 # Rate-limited professional scanning with authentication
 jshunter -l urls.txt -R 2000 -H "Authorization: Bearer token" -s -x -F -g -q
 
@@ -271,7 +274,7 @@ Usage:
 Basic Options:
   -t, --threads INT             Number of concurrent threads (default: 5)
   -c, --cookies <cookies>      Authentication cookies for protected resources
-  -p, --proxy host:port        HTTP proxy configuration (e.g., 127.0.0.1:8080 for Burp Suite)
+  -p, --proxy host:port        Proxy configuration (HTTP/HTTPS/SOCKS5, e.g., 127.0.0.1:8080 or socks5://127.0.0.1:1080)
   -q, --quiet                  Suppress ASCII art output
   -o, --output FILENAME.txt    Output file path
   -r, --regex <pattern>        RegEx for filtering results (endpoints and sensitive data)
@@ -380,7 +383,7 @@ go build -o jshunter jshunter.go
 JSHunter is released under the **MIT License**. See [LICENSE](https://github.com/cc1a2b/jshunter/blob/master/LICENSE) for details.
 
 ```
-Copyright (c) 2024 Hussain Alsharman
+Copyright (c) 2024-2026 Hussain Alsharman
 Licensed under MIT License - free for commercial and personal use
 ```
 

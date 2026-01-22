@@ -2,6 +2,7 @@ package main
 
 import (
     "bufio"
+    "context"
     "crypto/tls"
     "encoding/csv"
     "encoding/json"
@@ -21,11 +22,13 @@ import (
     "sync"
     "time"
     "math/rand"
+
+    "golang.org/x/net/proxy"
 )
 
 
 var (
-    version = "v0.4"
+    version = "v0.5"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -200,7 +203,7 @@ var (
         "Elasticsearch API Key":         regexp.MustCompile(`(?i)(?:elastic|es)[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_-]{50,}["']?`),
         "Mixpanel API Secret":           regexp.MustCompile(`(?i)mixpanel[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
         "Amplitude API Key":             regexp.MustCompile(`(?i)amplitude[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
-        "Segment Write Key":             regexp.MustCompile(`(?i)segment[_-]?(?:write)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{32}["']?`),
+        "Segment Write Key Alt":         regexp.MustCompile(`(?i)segment[_-]?(?:write)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{32}["']?`),
         "New Relic License Key":         regexp.MustCompile(`(?i)new[_-]?relic[_-]?license[_-]?key\s*[:=]\s*["']?[a-f0-9]{40}["']?`),
         "New Relic API Key":             regexp.MustCompile(`NRAK-[A-Z0-9]{27}`),
         "New Relic Insights Key":        regexp.MustCompile(`NRI[IQ]-[a-zA-Z0-9_-]{32}`),
@@ -1078,7 +1081,7 @@ func shouldProcessResponse(resp *http.Response, urlStr string, config *Config) b
     return hasJSExtension
 }
 
-func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundOnly bool) (string, map[string][]string) {
+func searchForSensitiveData(urlStr, regex, cookie, proxyStr string, skipTLS, foundOnly bool) (string, map[string][]string) {
     var client *http.Client
 
     transport := &http.Transport{
@@ -1087,30 +1090,63 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundO
         MaxIdleConns: 10,
         IdleConnTimeout: 30 * time.Second,
     }
-    
+
     var clientTimeout time.Duration = 30 * time.Second
-    
-    if proxy != "" {
-        // Normalize proxy URL - add http:// if not present
-        proxyURLStr := proxy
-        if !strings.HasPrefix(proxy, "http://") && !strings.HasPrefix(proxy, "https://") {
-            proxyURLStr = "http://" + proxy
+
+    if proxyStr != "" {
+        // Check if it's a SOCKS5 proxy
+        if strings.HasPrefix(proxyStr, "socks5://") || strings.HasPrefix(proxyStr, "socks5h://") {
+            // Parse SOCKS5 proxy
+            proxyURL, err := url.Parse(proxyStr)
+            if err != nil {
+                fmt.Printf("Invalid SOCKS5 proxy URL: %v\n", err)
+                return urlStr, nil
+            }
+
+            // Create SOCKS5 dialer
+            var auth *proxy.Auth
+            if proxyURL.User != nil {
+                password, _ := proxyURL.User.Password()
+                auth = &proxy.Auth{
+                    User:     proxyURL.User.Username(),
+                    Password: password,
+                }
+            }
+
+            dialer, err := proxy.SOCKS5("tcp", proxyURL.Host, auth, proxy.Direct)
+            if err != nil {
+                fmt.Printf("Failed to create SOCKS5 dialer: %v\n", err)
+                return urlStr, nil
+            }
+
+            // Use context dialer for SOCKS5
+            transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+                return dialer.Dial(network, addr)
+            }
+            transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+            clientTimeout = 60 * time.Second
+        } else {
+            // HTTP/HTTPS proxy - Normalize proxy URL - add http:// if not present
+            proxyURLStr := proxyStr
+            if !strings.HasPrefix(proxyStr, "http://") && !strings.HasPrefix(proxyStr, "https://") {
+                proxyURLStr = "http://" + proxyStr
+            }
+
+            proxyURL, err := url.Parse(proxyURLStr)
+            if err != nil {
+                fmt.Printf("Invalid proxy URL: %v\n", err)
+                return urlStr, nil
+            }
+            transport.Proxy = http.ProxyURL(proxyURL)
+
+            // When using proxy (like Burp), skip TLS verification to avoid certificate issues
+            transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+
+            // Increase timeout for proxy connections (Burp interception may take time)
+            clientTimeout = 60 * time.Second
         }
-        
-        proxyURL, err := url.Parse(proxyURLStr)
-        if err != nil {
-            fmt.Printf("Invalid proxy URL: %v\n", err)
-            return urlStr, nil
-        }
-        transport.Proxy = http.ProxyURL(proxyURL)
-        
-        // When using proxy (like Burp), skip TLS verification to avoid certificate issues
-        transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-        
-        // Increase timeout for proxy connections (Burp interception may take time)
-        clientTimeout = 60 * time.Second
     }
-    
+
     client = &http.Client{
         Transport: transport,
         Timeout: clientTimeout,
@@ -1132,7 +1168,7 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundO
         resp, err := client.Do(req)
         if err != nil {
             // Suppress TLS user canceled errors when using proxy (Burp interception)
-            if proxy == "" || !isTLSCanceledError(err) {
+            if proxyStr == "" || !isTLSCanceledError(err) {
                 // Only print if not using proxy or if it's a different error
             }
             return urlStr, nil
@@ -1149,7 +1185,7 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundO
         body, err := ioutil.ReadAll(resp.Body)
         if err != nil {
             // Suppress TLS user canceled errors when using proxy (Burp may close connection)
-            if proxy == "" || !isTLSCanceledError(err) {
+            if proxyStr == "" || !isTLSCanceledError(err) {
                 // Only show error if we got no data at all
                 if len(body) == 0 {
                     fmt.Printf("Error reading response body: %v\n", err)
@@ -1903,28 +1939,65 @@ func createHTTPClientWithConfig(config *Config) *http.Client {
         MaxIdleConns: 10,
         IdleConnTimeout: 30 * time.Second,
     }
-    
+
     clientTimeout := time.Duration(config.Timeout) * time.Second
-    
+
     if config.Proxy != "" {
-        proxyURLStr := config.Proxy
-        if !strings.HasPrefix(config.Proxy, "http://") && !strings.HasPrefix(config.Proxy, "https://") {
-            proxyURLStr = "http://" + config.Proxy
-        }
-        
-        proxyURL, err := url.Parse(proxyURLStr)
-        if err != nil {
-            fmt.Printf("[%sERROR%s] Invalid proxy URL %s: %v\n", colors["RED"], colors["NC"], proxyURLStr, err)
+        proxyStr := config.Proxy
+
+        // Check if it's a SOCKS5 proxy
+        if strings.HasPrefix(proxyStr, "socks5://") || strings.HasPrefix(proxyStr, "socks5h://") {
+            // Parse SOCKS5 proxy
+            proxyURL, err := url.Parse(proxyStr)
+            if err != nil {
+                fmt.Printf("[%sERROR%s] Invalid SOCKS5 proxy URL %s: %v\n", colors["RED"], colors["NC"], proxyStr, err)
+            } else {
+                // Create SOCKS5 dialer
+                var auth *proxy.Auth
+                if proxyURL.User != nil {
+                    password, _ := proxyURL.User.Password()
+                    auth = &proxy.Auth{
+                        User:     proxyURL.User.Username(),
+                        Password: password,
+                    }
+                }
+
+                dialer, err := proxy.SOCKS5("tcp", proxyURL.Host, auth, proxy.Direct)
+                if err != nil {
+                    fmt.Printf("[%sERROR%s] Failed to create SOCKS5 dialer: %v\n", colors["RED"], colors["NC"], err)
+                } else {
+                    // Use context dialer for SOCKS5
+                    transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+                        return dialer.Dial(network, addr)
+                    }
+                    transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+                    clientTimeout = 60 * time.Second
+                    if config.Verbose {
+                        fmt.Printf("[%sINFO%s] SOCKS5 proxy configured: %s\n", colors["BLUE"], colors["NC"], proxyStr)
+                    }
+                }
+            }
         } else {
-            transport.Proxy = http.ProxyURL(proxyURL)
-            transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-            clientTimeout = 60 * time.Second
-            if config.Verbose {
-                fmt.Printf("[%sINFO%s] Proxy configured: %s\n", colors["BLUE"], colors["NC"], proxyURLStr)
+            // HTTP/HTTPS proxy
+            proxyURLStr := proxyStr
+            if !strings.HasPrefix(proxyStr, "http://") && !strings.HasPrefix(proxyStr, "https://") {
+                proxyURLStr = "http://" + proxyStr
+            }
+
+            proxyURL, err := url.Parse(proxyURLStr)
+            if err != nil {
+                fmt.Printf("[%sERROR%s] Invalid proxy URL %s: %v\n", colors["RED"], colors["NC"], proxyURLStr, err)
+            } else {
+                transport.Proxy = http.ProxyURL(proxyURL)
+                transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+                clientTimeout = 60 * time.Second
+                if config.Verbose {
+                    fmt.Printf("[%sINFO%s] HTTP proxy configured: %s\n", colors["BLUE"], colors["NC"], proxyURLStr)
+                }
             }
         }
     }
-    
+
     return &http.Client{
         Transport: transport,
         Timeout: clientTimeout,
@@ -3863,7 +3936,7 @@ func processJSFileWithConfig(jsFile string, config *Config) {
     missingMutex.Lock()
     missingMessages = missingMessages[:0]
     missingMutex.Unlock()
-    
+
     if _, err := os.Stat(jsFile); os.IsNotExist(err) {
         fmt.Printf("[%sERROR%s] File not found: %s\n", colors["RED"], colors["NC"], jsFile)
     } else if err != nil {
@@ -3874,19 +3947,38 @@ func processJSFileWithConfig(jsFile string, config *Config) {
         if !config.Quiet {
             fmt.Printf("[%sFOUND%s] FILE: %s\n", colors["RED"], colors["NC"], jsFile)
         }
-        searchForSensitiveDataWithConfig(jsFile, config)
-        
+        _, sensitiveData := searchForSensitiveDataWithConfig(jsFile, config)
+
+        // If user specified -o flag, write results to output file
+        if config.Output != "" {
+            f, err := os.OpenFile(config.Output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+            if err != nil {
+                fmt.Printf("[%sERROR%s] Error writing to output file: %v\n", colors["RED"], colors["NC"], err)
+            } else {
+                defer f.Close()
+                fmt.Fprintf(f, "FILE: %s\n", jsFile)
+                for name, matches := range sensitiveData {
+                    for _, match := range matches {
+                        fmt.Fprintf(f, "Sensitive Data [%s]: %s\n", name, match)
+                    }
+                }
+                if len(sensitiveData) > 0 {
+                    fmt.Fprintln(f, "") // Add blank line between files
+                }
+            }
+        }
+
         // Print buffered MISSING messages only if no findings were made
         // AND no flags are set (pure normal mode only)
         globalSeenMutex.Lock()
         foundAny := globalFoundAny
         globalSeenMutex.Unlock()
-        
-        hasAnyFlag := config.Params || config.ParamURLs || config.Secrets || config.Tokens || 
-                     config.GraphQL || config.Firebase || config.Links || config.Internal || 
-                     config.Bypass || config.ExtractEndpoints || config.Deobfuscate || 
-                     config.SourceMap || config.Eval || config.ObfsDetect
-        
+
+        hasAnyFlag := config.Params || config.ParamURLs || config.Secrets || config.Tokens ||
+            config.GraphQL || config.Firebase || config.Links || config.Internal ||
+            config.Bypass || config.ExtractEndpoints || config.Deobfuscate ||
+            config.SourceMap || config.Eval || config.ObfsDetect
+
         if !foundAny && !config.FoundOnly && !hasAnyFlag && !config.Quiet {
             missingMutex.Lock()
             for _, msg := range missingMessages {
