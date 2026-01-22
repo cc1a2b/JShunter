@@ -51,11 +51,10 @@ var (
     regexPatterns = map[string]*regexp.Regexp{
 	"Google API":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
 	"Firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}(?:\s|$|[^A-Za-z0-9_-])`),
-	"Google Captcha":                regexp.MustCompile(`6L[0-9A-Za-z-_]{38}|^6[0-9a-zA-Z_-]{39}$`),
 	"Amazon Aws Access Key ID":      regexp.MustCompile(`A[SK]IA[0-9A-Z]{16}`),
 	"Amazon Mws Auth Token":         regexp.MustCompile(`amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
 	"Amazon Aws Url":                regexp.MustCompile(`s3\.amazonaws.com[/]+|[a-zA-Z0-9_-]*\.s3\.amazonaws.com`),
-	"Amazon Aws Url2":               regexp.MustCompile(`([a-zA-Z0-9-._]+\.s3\.amazonaws\.com|s3://[a-zA-Z0-9-._]+|s3-[a-zA-Z0-9-._/]+|s3.amazonaws.com/[a-zA-Z0-9-._]+|s3.console.aws.amazon.com/s3/buckets/[a-zA-Z0-9-._]+)`),
+	"Amazon Aws Url2":               regexp.MustCompile(`([a-zA-Z0-9-._]+\.s3\.amazonaws\.com|s3://[a-zA-Z0-9-._]+|s3-[a-z]{2}-[a-z]+-[0-9]+\.amazonaws\.com|s3.amazonaws.com/[a-zA-Z0-9-._]+|s3.console.aws.amazon.com/s3/buckets/[a-zA-Z0-9-._]+)`),
 	"Facebook Access Token":         regexp.MustCompile(`EAACEdEose0cBA[0-9A-Za-z]+`),
 	"Authorization Basic":           regexp.MustCompile(`(?i)\bauthorization\s*:\s*basic\s+[a-zA-Z0-9=:_\+\/-]{20,100}`),
 	"Authorization Bearer":          regexp.MustCompile(`(?i)\bauthorization\s*:\s*bearer\s+[a-zA-Z0-9_\-\.=:_\+\/]{20,100}`),
@@ -65,7 +64,7 @@ var (
 	"Twilio App Sid":                regexp.MustCompile(`AP[a-zA-Z0-9_\-]{32}`),
 	"Paypal Braintre Access Token":  regexp.MustCompile(`access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}`),
 	"Square Oauth Secret":           regexp.MustCompile(`sq0csp-[0-9A-Za-z\-_]{43}|sq0[a-z]{3}-[0-9A-Za-z\-_]{22,43}`),
-	"Square Access Token":           regexp.MustCompile(`sqOatp-[0-9A-Za-z\-_]{22}|EAAA[a-zA-Z0-9]{60}`),
+	"Square Access Token":           regexp.MustCompile(`sqOatp-[0-9A-Za-z\-_]{22}`),
 	"Stripe Standard Api":           regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
 	"Stripe Restricted Api":         regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
 	"Authorization Github Token":    regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36}\b`),
@@ -80,14 +79,13 @@ var (
     "Ssh2 Encrypted Private Key":    regexp.MustCompile(`(?s)-----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END SSH2 ENCRYPTED PRIVATE KEY-----`),
     "Generic Private Key":           regexp.MustCompile(`(?s)-----BEGIN.*PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END.*PRIVATE KEY-----`),
     "Username Password Combo":       regexp.MustCompile(`(?i)^[a-z]+:\/\/[^\/]*:[^@]+@`),
-    "Facebook Oauth":                regexp.MustCompile(`(?i)[fF][aA][cC][eE][bB][oO][oO][kK].*['\"]?[0-9a-f]{32}['\"]?`),
+    "Facebook Oauth":                regexp.MustCompile(`(?i)(?:facebook|fb)[_\-]?(?:app[_\-]?)?(?:secret|client[_\-]?secret|oauth)\s*[:=]\s*['\"]?[0-9a-f]{32}['\"]?`),
     "Twitter Oauth":                 regexp.MustCompile(`(?i)\b(?:twitter|tw)\s*[_-]?oauth[_-]?token\s*[:=]\s*["']?[0-9a-zA-Z]{35,44}["']?`),
     "Github Token":                  regexp.MustCompile(`(?i)\b(gh[pousr]_[0-9a-zA-Z]{36})\b`),
     "Google Oauth Client Secret":    regexp.MustCompile(`\"client_secret\":\"[a-zA-Z0-9-_]{24}\"`),
     "Aws Api Key":                   regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 	"Slack Token":                   regexp.MustCompile(`\"api_token\":\"(xox[a-zA-Z]-[a-zA-Z0-9-]+)\"`),
 	"Ssh Priv Key":                  regexp.MustCompile(`([-]+BEGIN [^\s]+ PRIVATE KEY[-]+[\s]*[^-]*[-]+END [^\s]+ PRIVATE KEY[-]+)`),
-	"Heroku Api Key":                regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
 	"Slack Webhook Url":             regexp.MustCompile(`https://hooks.slack.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`),
 	"Heroku Api Key 2":              regexp.MustCompile(`[hH]eroku[a-zA-Z0-9]{32}`),
 	"Dropbox Access Token":          regexp.MustCompile(`(?i)^sl\.[A-Za-z0-9_-]{16,50}$`),
@@ -142,6 +140,109 @@ var (
     "Email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
 	"Ali Cloud Access Key":		     regexp.MustCompile(`^LTAI[A-Za-z0-9]{12,20}$`),
 	"Tencent Cloud Access Key":	     regexp.MustCompile(`^AKID[A-Za-z0-9]{13,20}$`),
+        "OpenAI API Key":                regexp.MustCompile(`sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20}`),
+        "OpenAI API Key Project":        regexp.MustCompile(`sk-proj-[a-zA-Z0-9]{48,}`),
+        "OpenAI API Key Svc":            regexp.MustCompile(`sk-svcacct-[a-zA-Z0-9_-]{80,}`),
+        "Anthropic API Key":             regexp.MustCompile(`sk-ant-api[a-zA-Z0-9-]{37,}`),
+        "HuggingFace Token":             regexp.MustCompile(`hf_[a-zA-Z0-9]{34,}`),
+        "Cohere API Key":                regexp.MustCompile(`(?i)cohere[_-]?api[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{40}["']?`),
+        "Replicate API Token":           regexp.MustCompile(`r8_[a-zA-Z0-9]{40}`),
+        "Google AI API Key":             regexp.MustCompile(`(?i)(?:gemini|palm|bard)[_-]?api[_-]?key\s*[:=]\s*["']?AIza[a-zA-Z0-9_-]{35}["']?`),
+        "AWS Secret Access Key":         regexp.MustCompile(`(?i)(?:aws)?[_-]?secret[_-]?(?:access)?[_-]?key\s*[:=]\s*["']?[A-Za-z0-9/+=]{40}["']?`),
+        "AWS Session Token":             regexp.MustCompile(`(?i)aws[_-]?session[_-]?token\s*[:=]\s*["']?[A-Za-z0-9/+=]{100,}["']?`),
+        "MongoDB Connection String":     regexp.MustCompile(`mongodb(?:\+srv)?://[a-zA-Z0-9._-]+:[^@\s"']+@[a-zA-Z0-9._-]+`),
+        "PostgreSQL Connection String":  regexp.MustCompile(`postgres(?:ql)?://[a-zA-Z0-9._-]+:[^@\s"']+@[a-zA-Z0-9._-]+`),
+        "MySQL Connection String":       regexp.MustCompile(`mysql://[a-zA-Z0-9._-]+:[^@\s"']+@[a-zA-Z0-9._-]+`),
+        "Redis Connection String":       regexp.MustCompile(`redis://[a-zA-Z0-9._-]+:[^@\s"']+@[a-zA-Z0-9._-]+`),
+        "MSSQL Connection String":       regexp.MustCompile(`(?i)(?:server|data source)=[^;]+;.*(?:password|pwd)=[^;]+`),
+        "Database URL Generic":          regexp.MustCompile(`(?i)(?:database|db)[_-]?url\s*[:=]\s*["']?[a-z]+://[^:]+:[^@]+@[^\s"']+["']?`),
+        "Azure Client Secret":           regexp.MustCompile(`(?i)(?:azure|ad)[_-]?(?:client)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9~._-]{34,}["']?`),
+        "Azure Storage Connection":      regexp.MustCompile(`DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=[a-zA-Z0-9+/=]{86,}`),
+        "Azure SAS Token":               regexp.MustCompile(`(?i)[?&]sig=[a-zA-Z0-9%]{43,}`),
+        "Azure SQL Connection":          regexp.MustCompile(`(?i)Server=tcp:[^;]+;.*Password=[^;]+`),
+        "DigitalOcean Token":            regexp.MustCompile(`dop_v1_[a-f0-9]{64}`),
+        "DigitalOcean OAuth":            regexp.MustCompile(`doo_v1_[a-f0-9]{64}`),
+        "DigitalOcean Refresh":          regexp.MustCompile(`dor_v1_[a-f0-9]{64}`),
+        "Linode API Token":              regexp.MustCompile(`(?i)linode[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?[a-f0-9]{64}["']?`),
+        "Vultr API Key":                 regexp.MustCompile(`(?i)vultr[_-]?api[_-]?key\s*[:=]\s*["']?[A-Z0-9]{36}["']?`),
+        "Hetzner API Token":             regexp.MustCompile(`(?i)hetzner[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9]{64}["']?`),
+        "Oracle Cloud API Key":          regexp.MustCompile(`(?i)oci[_-]?api[_-]?key\s*[:=]\s*["']?-----BEGIN (?:RSA )?PRIVATE KEY-----`),
+        "IBM Cloud API Key":             regexp.MustCompile(`(?i)ibm[_-]?(?:cloud)?[_-]?api[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_-]{44}["']?`),
+        "NPM Access Token":              regexp.MustCompile(`npm_[a-zA-Z0-9]{36}`),
+        "PyPI API Token":                regexp.MustCompile(`pypi-[a-zA-Z0-9_-]{100,}`),
+        "NuGet API Key":                 regexp.MustCompile(`oy2[a-z0-9]{43}`),
+        "RubyGems API Key":              regexp.MustCompile(`rubygems_[a-f0-9]{48}`),
+        "CircleCI Token":                regexp.MustCompile(`(?i)circle[_-]?(?:ci)?[_-]?token\s*[:=]\s*["']?[a-f0-9]{40}["']?`),
+        "Travis CI Token":               regexp.MustCompile(`(?i)travis[_-]?(?:ci)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9]{22}["']?`),
+        "Jenkins API Token":             regexp.MustCompile(`(?i)jenkins[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?[a-f0-9]{32,}["']?`),
+        "Bitbucket App Password":        regexp.MustCompile(`(?i)bitbucket[_-]?(?:app)?[_-]?(?:password|secret)\s*[:=]\s*["']?[a-zA-Z0-9]{18,}["']?`),
+        "Codecov Token":                 regexp.MustCompile(`(?i)codecov[_-]?token\s*[:=]\s*["']?[a-f0-9-]{36}["']?`),
+        "Vercel Token":                  regexp.MustCompile(`(?i)vercel[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9]{24}["']?`),
+        "Netlify Token":                 regexp.MustCompile(`(?i)netlify[_-]?(?:auth)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9_-]{40,}["']?`),
+        "Vault Token":                   regexp.MustCompile(`(?i)(?:vault[_-]?token|hvs)\s*[:=]?\s*["']?(?:hvs\.)?[a-zA-Z0-9_-]{24,}["']?`),
+        "Kubernetes Token":              regexp.MustCompile(`eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+`),
+        "Docker Registry Password":      regexp.MustCompile(`(?i)docker[_-]?(?:registry)?[_-]?(?:password|pass|pwd)\s*[:=]\s*["']?[^\s"']{8,}["']?`),
+        "Terraform Cloud Token":         regexp.MustCompile(`(?i)(?:tfe|terraform)[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9]{14}\.[a-zA-Z0-9_-]{67}["']?`),
+        "Pulumi Access Token":           regexp.MustCompile(`pul-[a-f0-9]{40}`),
+        "Adyen API Key":                 regexp.MustCompile(`(?i)adyen[_-]?api[_-]?key\s*[:=]\s*["']?AQE[a-zA-Z0-9_-]{50,}["']?`),
+        "Klarna API Key":                regexp.MustCompile(`(?i)klarna[_-]?api[_-]?(?:key|secret)\s*[:=]\s*["']?[a-zA-Z0-9_-]{30,}["']?`),
+        "Razorpay Key":                  regexp.MustCompile(`rzp_(?:live|test)_[a-zA-Z0-9]{14}`),
+        "Coinbase API Secret":           regexp.MustCompile(`(?i)coinbase[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9]{64}["']?`),
+        "Binance API Secret":            regexp.MustCompile(`(?i)binance[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9]{64}["']?`),
+        "Twilio Auth Token":             regexp.MustCompile(`(?i)twilio[_-]?auth[_-]?token\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Pusher Secret":                 regexp.MustCompile(`(?i)pusher[_-]?(?:app)?[_-]?secret\s*[:=]\s*["']?[a-f0-9]{20}["']?`),
+        "Vonage API Secret":             regexp.MustCompile(`(?i)(?:vonage|nexmo)[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9]{16}["']?`),
+        "Plivo Auth Token":              regexp.MustCompile(`(?i)plivo[_-]?auth[_-]?(?:token|id)\s*[:=]\s*["']?[a-zA-Z0-9]{40,}["']?`),
+        "MessageBird API Key":           regexp.MustCompile(`(?i)messagebird[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{25}["']?`),
+        "Intercom Access Token":         regexp.MustCompile(`(?i)intercom[_-]?(?:access)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9=_-]{60,}["']?`),
+        "Zendesk API Token":             regexp.MustCompile(`(?i)zendesk[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9]{40}["']?`),
+        "Algolia Admin API Key":         regexp.MustCompile(`(?i)algolia[_-]?(?:admin)?[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Elasticsearch API Key":         regexp.MustCompile(`(?i)(?:elastic|es)[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_-]{50,}["']?`),
+        "Mixpanel API Secret":           regexp.MustCompile(`(?i)mixpanel[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Amplitude API Key":             regexp.MustCompile(`(?i)amplitude[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Segment Write Key":             regexp.MustCompile(`(?i)segment[_-]?(?:write)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{32}["']?`),
+        "New Relic License Key":         regexp.MustCompile(`(?i)new[_-]?relic[_-]?license[_-]?key\s*[:=]\s*["']?[a-f0-9]{40}["']?`),
+        "New Relic API Key":             regexp.MustCompile(`NRAK-[A-Z0-9]{27}`),
+        "New Relic Insights Key":        regexp.MustCompile(`NRI[IQ]-[a-zA-Z0-9_-]{32}`),
+        "Loggly Token":                  regexp.MustCompile(`(?i)loggly[_-]?(?:customer)?[_-]?token\s*[:=]\s*["']?[a-f0-9-]{36}["']?`),
+        "Splunk HEC Token":              regexp.MustCompile(`(?i)splunk[_-]?(?:hec)?[_-]?token\s*[:=]\s*["']?[a-f0-9-]{36}["']?`),
+        "Sumo Logic Access Key":         regexp.MustCompile(`(?i)sumo[_-]?logic[_-]?(?:access)?[_-]?(?:key|id)\s*[:=]\s*["']?su[a-zA-Z0-9]{12}["']?`),
+        "Grafana API Key":               regexp.MustCompile(`eyJr[a-zA-Z0-9_-]{50,}={0,2}`),
+        "PagerDuty API Key":             regexp.MustCompile(`(?i)pagerduty[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9+/=_-]{20}["']?`),
+        "Supabase Service Role Key":     regexp.MustCompile(`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+`),
+        "Firebase Admin SDK Key":        regexp.MustCompile(`(?i)firebase[_-]?(?:admin)?[_-]?sdk[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_-]{100,}["']?`),
+        "Auth0 Client Secret":           regexp.MustCompile(`(?i)auth0[_-]?(?:client)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9_-]{64,}["']?`),
+        "Okta API Token Alt":            regexp.MustCompile(`(?i)okta[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?00[a-zA-Z0-9_-]{40}["']?`),
+        "Cloudinary Secret":             regexp.MustCompile(`(?i)cloudinary[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9_-]{27}["']?`),
+        "Cloudinary URL":                regexp.MustCompile(`cloudinary://[0-9]+:[a-zA-Z0-9_-]+@[a-z]+`),
+        "Backblaze Application Key":     regexp.MustCompile(`(?i)b2[_-]?(?:application)?[_-]?key\s*[:=]\s*["']?K[a-zA-Z0-9]{30,}["']?`),
+        "Wasabi Access Key":             regexp.MustCompile(`(?i)wasabi[_-]?(?:access)?[_-]?key\s*[:=]\s*["']?[A-Z0-9]{20}["']?`),
+        "LaunchDarkly SDK Key":          regexp.MustCompile(`(?i)(?:ld)?[_-]?sdk[_-]?key\s*[:=]\s*["']?sdk-[a-f0-9-]{36}["']?`),
+        "LaunchDarkly API Key":          regexp.MustCompile(`(?i)launchdarkly[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?api-[a-f0-9-]{36}["']?`),
+        "Split.io API Key":              regexp.MustCompile(`(?i)split[_-]?(?:io)?[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{50,}["']?`),
+        "Statsig Secret":                regexp.MustCompile(`(?i)statsig[_-]?(?:secret)?[_-]?key\s*[:=]\s*["']?secret-[a-zA-Z0-9]{50,}["']?`),
+        "GitLab Pipeline Token":         regexp.MustCompile(`glptt-[a-f0-9]{40}`),
+        "GitLab Runner Token":           regexp.MustCompile(`GR1348941[a-zA-Z0-9_-]{20}`),
+        "GitHub App Private Key":        regexp.MustCompile(`-----BEGIN RSA PRIVATE KEY-----[\s\S]+?-----END RSA PRIVATE KEY-----`),
+        "Bitbucket OAuth Secret":        regexp.MustCompile(`(?i)bitbucket[_-]?(?:oauth)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9]{32,}["']?`),
+        "Contentful Management Token":   regexp.MustCompile(`CFPAT-[a-zA-Z0-9_-]{43}`),
+        "Contentful Delivery Token":     regexp.MustCompile(`(?i)contentful[_-]?(?:delivery)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9_-]{43}["']?`),
+        "Sanity Token":                  regexp.MustCompile(`sk[a-zA-Z0-9]{32,}`),
+        "Strapi API Token":              regexp.MustCompile(`(?i)strapi[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?[a-f0-9]{256}["']?`),
+        "Postmark Server Token":         regexp.MustCompile(`(?i)postmark[_-]?(?:server)?[_-]?token\s*[:=]\s*["']?[a-f0-9-]{36}["']?`),
+        "SparkPost API Key":             regexp.MustCompile(`(?i)sparkpost[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-f0-9]{40}["']?`),
+        "Mailjet API Secret":            regexp.MustCompile(`(?i)mailjet[_-]?(?:api)?[_-]?secret\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Mandrill API Key":              regexp.MustCompile(`(?i)mandrill[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_-]{22}["']?`),
+        "Customer.io API Key":           regexp.MustCompile(`(?i)customer[_-]?io[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Mapbox Secret Token":           regexp.MustCompile(`sk\.[a-zA-Z0-9]{60,}\.[a-zA-Z0-9_-]{22,}`),
+        "Here API Key":                  regexp.MustCompile(`(?i)here[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_-]{43}["']?`),
+        "TomTom API Key":                regexp.MustCompile(`(?i)tomtom[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9]{32}["']?`),
+        "LinkedIn Client Secret":        regexp.MustCompile(`(?i)linkedin[_-]?(?:client)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9]{16}["']?`),
+        "Spotify Client Secret":         regexp.MustCompile(`(?i)spotify[_-]?(?:client)?[_-]?secret\s*[:=]\s*["']?[a-f0-9]{32}["']?`),
+        "Dropbox App Secret":            regexp.MustCompile(`(?i)dropbox[_-]?(?:app)?[_-]?secret\s*[:=]\s*["']?[a-z0-9]{15}["']?`),
+        "Private Key Inline":            regexp.MustCompile(`(?i)(?:private[_-]?key|priv[_-]?key)\s*[:=]\s*["'][a-zA-Z0-9+/=\n]{100,}["']`),
+        "Password Hardcoded":            regexp.MustCompile(`(?i)(?:password|passwd|pwd)\s*[:=]\s*["'][^"']{8,50}["']`),
+        "Secret Key Hardcoded":          regexp.MustCompile(`(?i)(?:secret[_-]?key|signing[_-]?key|encryption[_-]?key)\s*[:=]\s*["'][a-zA-Z0-9+/=_-]{20,}["']`),
     }
 
     asciiArt = `
@@ -1084,12 +1185,20 @@ func searchForSensitiveData(urlStr, regex, cookie, proxy string, skipTLS, foundO
 
 func isUnwantedEmail(email string) bool {
     unwantedPrefixes := []string{
-        "info@", "career@", "jobs@", "admin@", "support@", "contact@", 
+        "info@", "career@", "careers@", "jobs@", "admin@", "support@", "contact@",
         "help@", "noreply@", "no-reply@", "test@", "demo@", "example@",
+        "sales@", "marketing@", "press@", "media@", "feedback@", "hello@",
+        "team@", "hr@", "legal@", "privacy@", "abuse@", "postmaster@",
+        "webmaster@", "hostmaster@", "security@", "compliance@", "billing@",
+        "service@", "newsletter@", "notifications@", "alerts@", "noemail@",
+        "donotreply@", "do-not-reply@", "mailer@", "mail@", "email@",
+        "integration@", "api@", "dev@", "developer@", "developers@",
     }
-    
+
     unwantedDomains := []string{
         "example.com", "test.com", "localhost", "example.org", "example.net",
+        "domain.com", "email.com", "mail.com", "yoursite.com", "yourdomain.com",
+        "sentry.io", "sentry-next.wixpress.com",
     }
     
     email = strings.ToLower(email)
@@ -3109,15 +3218,83 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
     if config.Secrets {
         // Add only secret-related patterns from regexPatterns
         secretPatterns := []string{
+            // Original patterns
             "Google API", "Firebase", "Amazon Aws Access Key ID", "Amazon Mws Auth Token",
             "Facebook Access Token", "Authorization Basic", "Authorization Bearer", "Authorization Api",
             "Twilio Api Key", "Twilio Account Sid", "Twilio App Sid", "Paypal Braintre Access Token",
             "Square Oauth Secret", "Square Access Token", "Stripe Standard Api", "Stripe Restricted Api",
             "Authorization Github Token", "Github Access Token", "Rsa Private Key", "Ssh Dsa Private Key",
             "Ssh Dc Private Key", "Pgp Private Block", "Ssh Private Key", "Aws Api Key", "Slack Token",
-            "Ssh Priv Key", "Heroku Api Key", "Slack Webhook Url", "Dropbox Access Token",
+            "Ssh Priv Key", "Heroku Api Key 2", "Heroku Api Key 3", "Slack Webhook Url", "Dropbox Access Token",
             "Salesforce Access Token", "Pem Private Key", "Google Cloud Sa Key", "Stripe Publishable Key",
             "Azure Storage Account Key", "Instagram Access Token", "Generic Api Key", "Generic Secret",
+
+            // AI/LLM API Keys (CRITICAL)
+            "OpenAI API Key", "OpenAI API Key Project", "OpenAI API Key Svc", "Anthropic API Key",
+            "HuggingFace Token", "Cohere API Key", "Replicate API Token", "Google AI API Key",
+
+            // AWS Secrets (CRITICAL)
+            "AWS Secret Access Key", "AWS Session Token",
+
+            // Database Connection Strings (CRITICAL)
+            "MongoDB Connection String", "PostgreSQL Connection String", "MySQL Connection String",
+            "Redis Connection String", "MSSQL Connection String", "Database URL Generic",
+
+            // Azure Secrets (HIGH)
+            "Azure Client Secret", "Azure Storage Connection", "Azure SAS Token", "Azure SQL Connection",
+
+            // Cloud Providers (HIGH)
+            "DigitalOcean Token", "DigitalOcean OAuth", "DigitalOcean Refresh", "Linode API Token",
+            "Vultr API Key", "Hetzner API Token", "Oracle Cloud API Key", "IBM Cloud API Key",
+
+            // CI/CD Tokens (HIGH - supply chain)
+            "NPM Access Token", "PyPI API Token", "NuGet API Key", "RubyGems API Key",
+            "CircleCI Token", "Travis CI Token", "Jenkins API Token", "Bitbucket App Password",
+            "Codecov Token", "Vercel Token", "Netlify Token",
+
+            // Infrastructure (CRITICAL)
+            "Vault Token", "Kubernetes Token", "Docker Registry Password", "Terraform Cloud Token", "Pulumi Access Token",
+
+            // Payment Processors (CRITICAL)
+            "Adyen API Key", "Klarna API Key", "Razorpay Key", "Coinbase API Secret", "Binance API Secret",
+
+            // Communication Services (HIGH)
+            "Twilio Auth Token", "Pusher Secret", "Vonage API Secret", "Plivo Auth Token",
+            "MessageBird API Key", "Intercom Access Token", "Zendesk API Token",
+
+            // Search/Analytics (HIGH)
+            "Algolia Admin API Key", "Elasticsearch API Key", "Mixpanel API Secret", "Amplitude API Key",
+
+            // Monitoring/Logging (HIGH)
+            "New Relic License Key", "New Relic API Key", "New Relic Insights Key",
+            "Loggly Token", "Splunk HEC Token", "Sumo Logic Access Key", "Grafana API Key", "PagerDuty API Key",
+
+            // Backend as a Service (HIGH)
+            "Supabase Service Role Key", "Firebase Admin SDK Key", "Auth0 Client Secret", "Okta API Token Alt",
+
+            // Cloud Storage (HIGH)
+            "Cloudinary Secret", "Cloudinary URL", "Backblaze Application Key", "Wasabi Access Key",
+
+            // Feature Flags
+            "LaunchDarkly SDK Key", "LaunchDarkly API Key", "Split.io API Key", "Statsig Secret",
+
+            // Version Control (HIGH)
+            "GitLab Pipeline Token", "GitLab Runner Token", "GitHub App Private Key", "Bitbucket OAuth Secret",
+
+            // CMS/Content
+            "Contentful Management Token", "Contentful Delivery Token", "Sanity Token", "Strapi API Token",
+
+            // Email Services (HIGH)
+            "Postmark Server Token", "SparkPost API Key", "Mailjet API Secret", "Mandrill API Key", "Customer.io API Key",
+
+            // Maps/Location
+            "Mapbox Secret Token", "Here API Key", "TomTom API Key",
+
+            // Social/OAuth Secrets
+            "LinkedIn Client Secret", "Spotify Client Secret", "Dropbox App Secret",
+
+            // Hardcoded Credentials
+            "Private Key Inline", "Password Hardcoded", "Secret Key Hardcoded",
         }
         for _, name := range secretPatterns {
             if pattern, exists := regexPatterns[name]; exists {
@@ -3389,7 +3566,12 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
                             }
                         }
                     }
-                    
+
+                    // Filter unwanted emails
+                    if name == "Email" && isUnwantedEmail(match) {
+                        continue
+                    }
+
                     matches = append(matches, match)
                 }
             }
