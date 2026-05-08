@@ -18,6 +18,8 @@
 
 **JSHunter** is a comprehensive command-line tool for JavaScript security analysis and endpoint discovery. Built for security professionals, penetration testers, and developers, it delivers enterprise-grade analysis capabilities with high accuracy detection algorithms and professional reporting features.
 
+> **v0.6 — surgical false-positive reduction.** Every secret-class match now flows through a confidence-scoring pipeline (entropy gate, character-class diversity, vendor-noise denylist, fixture-context penalty, sourcemap-line skip) before it is reported. Highest-volume providers (AWS, Stripe, GitHub, OpenAI, Slack, JWT) get format-and-checksum validators. Output is `schema_version: 2` JSON with per-finding `confidence` and `reasons`. Run `jshunter --self-test` to exercise the rule registry against its built-in TP/FP fixtures.
+
 <div align="center">
 <img alt="JSHunter Demo Screenshot" src="https://github.com/user-attachments/assets/f0197c36-c40b-48e9-bec5-c306acd4a613" width="100%">
 
@@ -178,7 +180,7 @@ jshunter --help
 ```bash
 git clone https://github.com/cc1a2b/jshunter.git
 cd jshunter
-go build -o jshunter jshunter.go
+go build -o jshunter .
 ```
 
 ### System Requirements
@@ -313,12 +315,51 @@ Scope & Discovery:
   -E, --ext                    Filter by JavaScript file extensions
 
 Output Formats:
-  -j, --json                   Structured JSON output format
+  -j, --json                   Structured JSON output format (schema_version 2)
   -C, --csv                    CSV format for spreadsheet analysis
   -v, --verbose                Detailed analysis and debug output
   -n, --burp                   Burp Suite compatible export format
+
+False-Positive Pipeline (v0.6):
+  -mc,  --min-confidence FLOAT Minimum confidence (0.0-1.0) for a finding (default 0.50)
+  -sc,  --show-confidence      Print [conf=X.XX] alongside each finding
+        --no-fp-filter         Disable the FP filter (debug; keeps every match)
+        --self-test            Run rule registry against built-in TP/FP fixtures
+        --max-bytes N          Cap response body read in bytes (default 32MiB)
+        --allow-internal       Permit file://, localhost, and RFC1918 targets
+
   -h, --help                   Display this help message
 ```
+
+### v0.6 confidence model
+
+Every secret-class match is scored in `[0.0, 1.0]`. The score starts from a per-rule prior and is adjusted by:
+
+| Signal                                         | Effect                       |
+|------------------------------------------------|------------------------------|
+| Source path looks like a vendor/chunk bundle   | −0.15                        |
+| Surrounding context contains fixture wording   | −0.30                        |
+| Provider-specific validator passed             | +0.10                        |
+| Required context keyword present (generic rule)| +0.05                        |
+| Shannon entropy ≥ 4.5                          | +0.05                        |
+| Character-class diversity ≥ 3                  | +0.05                        |
+| Match in the vendor-noise denylist             | dropped before scoring       |
+| Length / entropy below rule floor              | dropped before scoring       |
+| Line is a `//# sourceMappingURL=` marker       | dropped before scoring       |
+
+The default `--min-confidence 0.50` filters out the long tail of pattern-only matches. Use `--min-confidence 0.80` for high-precision triage, `--no-fp-filter` for raw v0.5-compatible output.
+
+### Provider validators
+
+| Provider | Validator                                                                |
+|----------|--------------------------------------------------------------------------|
+| AWS      | Prefix family (`AKIA/ASIA/A3T…`) + 16-char base32 body                   |
+| Stripe   | Prefix family (`sk/rk/pk_live/test_`) + clean base62 body                |
+| GitHub   | CRC32 base62 checksum verified against random body                        |
+| OpenAI   | Family prefix + length window (`sk-/sk-proj-/sk-svcacct-`)                |
+| Slack    | Hyphen-segment shape (numeric inner segments, alphanumeric tail)         |
+| JWT      | base64url-decoded JSON header with `alg` field + JSON payload            |
+| Twilio   | 32-hex body + entropy gate                                               |
 
 ---
 
@@ -373,7 +414,7 @@ We welcome contributions! Here's how you can help:
 git clone https://github.com/cc1a2b/jshunter.git
 cd jshunter
 go mod tidy
-go build -o jshunter jshunter.go
+go build -o jshunter .
 ```
 
 ---

@@ -9,7 +9,6 @@ import (
     "flag"
     "fmt"
     "io"
-    "io/ioutil"
     "math"
     "net"
     "net/http"
@@ -28,7 +27,7 @@ import (
 
 
 var (
-    version = "v0.5"
+    version = "v0.6"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -55,7 +54,7 @@ var (
 	"Google API":                    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
 	"Firebase":                      regexp.MustCompile(`AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}(?:\s|$|[^A-Za-z0-9_-])`),
 	"Amazon Aws Access Key ID":      regexp.MustCompile(`A[SK]IA[0-9A-Z]{16}`),
-	"Amazon Mws Auth Token":         regexp.MustCompile(`amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
+	"Amazon Mws Auth Token":         regexp.MustCompile(`\bamzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`),
 	"Amazon Aws Url":                regexp.MustCompile(`s3\.amazonaws.com[/]+|[a-zA-Z0-9_-]*\.s3\.amazonaws.com`),
 	"Amazon Aws Url2":               regexp.MustCompile(`([a-zA-Z0-9-._]+\.s3\.amazonaws\.com|s3://[a-zA-Z0-9-._]+|s3-[a-z]{2}-[a-z]+-[0-9]+\.amazonaws\.com|s3.amazonaws.com/[a-zA-Z0-9-._]+|s3.console.aws.amazon.com/s3/buckets/[a-zA-Z0-9-._]+)`),
 	"Facebook Access Token":         regexp.MustCompile(`EAACEdEose0cBA[0-9A-Za-z]+`),
@@ -71,17 +70,17 @@ var (
 	"Stripe Standard Api":           regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
 	"Stripe Restricted Api":         regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
 	"Authorization Github Token":    regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36}\b`),
-	"Github Access Token":           regexp.MustCompile(`[a-zA-Z0-9_-]*:[a-zA-Z0-9_\-]+@github\.com*`),
+	"Github Access Token":           regexp.MustCompile(`[a-zA-Z0-9_-]+:[a-zA-Z0-9_\-]{20,}@github\.com\b`),
 	"Rsa Private Key":               regexp.MustCompile(`-----BEGIN RSA PRIVATE KEY-----`),
 	"Ssh Dsa Private Key":           regexp.MustCompile(`-----BEGIN DSA PRIVATE KEY-----`),
 	"Ssh Dc Private Key":            regexp.MustCompile(`-----BEGIN EC PRIVATE KEY-----`),
 	"Pgp Private Block":             regexp.MustCompile(`-----BEGIN PGP PRIVATE KEY BLOCK-----`),
 	"Ssh Private Key":               regexp.MustCompile(`(?s)-----BEGIN OPENSSH PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END OPENSSH PRIVATE KEY-----`),
-	"Json Web Token":                regexp.MustCompile(`ey[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*$`),
+	"Json Web Token":                regexp.MustCompile(`\beyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\b`),
     "Putty Private Key":             regexp.MustCompile(`(?s)PuTTY-User-Key-File-2.*?-----END`),
     "Ssh2 Encrypted Private Key":    regexp.MustCompile(`(?s)-----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END SSH2 ENCRYPTED PRIVATE KEY-----`),
     "Generic Private Key":           regexp.MustCompile(`(?s)-----BEGIN.*PRIVATE KEY-----[a-zA-Z0-9+\/=\n]+-----END.*PRIVATE KEY-----`),
-    "Username Password Combo":       regexp.MustCompile(`(?i)^[a-z]+:\/\/[^\/]*:[^@]+@`),
+    "Username Password Combo":       regexp.MustCompile(`(?i)\b[a-z]+://[^/\s:@"']{1,64}:[^/\s:@"']{1,128}@[a-zA-Z0-9.\-]{3,255}`),
     "Facebook Oauth":                regexp.MustCompile(`(?i)(?:facebook|fb)[_\-]?(?:app[_\-]?)?(?:secret|client[_\-]?secret|oauth)\s*[:=]\s*['\"]?[0-9a-f]{32}['\"]?`),
     "Twitter Oauth":                 regexp.MustCompile(`(?i)\b(?:twitter|tw)\s*[_-]?oauth[_-]?token\s*[:=]\s*["']?[0-9a-zA-Z]{35,44}["']?`),
     "Github Token":                  regexp.MustCompile(`(?i)\b(gh[pousr]_[0-9a-zA-Z]{36})\b`),
@@ -90,39 +89,39 @@ var (
 	"Slack Token":                   regexp.MustCompile(`\"api_token\":\"(xox[a-zA-Z]-[a-zA-Z0-9-]+)\"`),
 	"Ssh Priv Key":                  regexp.MustCompile(`([-]+BEGIN [^\s]+ PRIVATE KEY[-]+[\s]*[^-]*[-]+END [^\s]+ PRIVATE KEY[-]+)`),
 	"Slack Webhook Url":             regexp.MustCompile(`https://hooks.slack.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`),
-	"Heroku Api Key 2":              regexp.MustCompile(`[hH]eroku[a-zA-Z0-9]{32}`),
-	"Dropbox Access Token":          regexp.MustCompile(`(?i)^sl\.[A-Za-z0-9_-]{16,50}$`),
+	"Heroku Api Key 2":              regexp.MustCompile(`(?i)\bheroku[_-]?(?:api[_-]?)?key\s*[:=]\s*["']?[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}["']?`),
+	"Dropbox Access Token":          regexp.MustCompile(`(?i)\bsl\.[A-Za-z0-9_-]{16,50}\b`),
 	"Salesforce Access Token":       regexp.MustCompile(`00D[0-9A-Za-z]{15,18}![A-Za-z0-9]{40}`),
-	"Twitter Bearer Token":          regexp.MustCompile(`(?i)^AAAAAAAAAAAAAAAAAAAAA[A-Za-z0-9]{30,45}$`),
+	"Twitter Bearer Token":          regexp.MustCompile(`\bAAAAAAAAAAAAAAAAAAAAA[A-Za-z0-9%]{30,80}\b`),
 	"Firebase Url":                  regexp.MustCompile(`https://[a-z0-9-]+\.firebaseio\.com`),
 	"Pem Private Key":               regexp.MustCompile(`-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----`),
 	"Google Cloud Sa Key":           regexp.MustCompile(`"type": "service_account"`),
 	"Stripe Publishable Key":        regexp.MustCompile(`pk_live_[0-9a-zA-Z]{24}`),
-	"Azure Storage Account Key":     regexp.MustCompile(`(?i)^[A-Za-z0-9]{44}=[A-Za-z0-9+/=]{0,43}$`),
+	"Azure Storage Account Key":     regexp.MustCompile(`(?i)\b(?:AccountKey|azure[_-]?storage[_-]?key)\s*[:=]\s*["']?[A-Za-z0-9+/]{86}==["']?`),
 	"Instagram Access Token":        regexp.MustCompile(`IGQV[A-Za-z0-9._-]{10,}`),
 	"Stripe Test Publishable Key":   regexp.MustCompile(`pk_test_[0-9a-zA-Z]{24}`),
 	"Stripe Test Secret Key":        regexp.MustCompile(`sk_test_[0-9a-zA-Z]{24}`),
 	"Slack Bot Token":               regexp.MustCompile(`xoxb-[A-Za-z0-9-]{24,34}`),
 	"Slack User Token":              regexp.MustCompile(`xoxp-[A-Za-z0-9-]{24,34}`),
-    "Google Gmail Api Key":          regexp.MustCompile(`AIza[0-9A-Za-z\\-_]{35}`),
+    "Google Gmail Api Key":          regexp.MustCompile(`\bAIza[0-9A-Za-z_\-]{35}\b`),
     "Google Gmail Oauth":            regexp.MustCompile(`\b[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com\b`),
-    "Google Oauth Access Token":     regexp.MustCompile(`ya29\.[0-9A-Za-z\\-_]+`),
+    "Google Oauth Access Token":     regexp.MustCompile(`\bya29\.[0-9A-Za-z_\-]{40,}\b`),
     "Mailchimp Api Key":             regexp.MustCompile(`[0-9a-f]{32}-us[0-9]{1,2}`),
     "Mailgun Api Key":               regexp.MustCompile(`key-[0-9a-zA-Z]{32}`),
     "Google Drive Oauth":            regexp.MustCompile(`\b[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com\b`),
-    "Paypal Braintree Access Token": regexp.MustCompile(`access_token\\$production\\$[0-9a-z]{16}\\$[0-9a-f]{32}`),
+    "Paypal Braintree Access Token": regexp.MustCompile(`access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}`),
     "Picatic Api Key":               regexp.MustCompile(`sk_live_[0-9a-z]{32}`),
     "Stripe Api Key":                regexp.MustCompile(`sk_live_[0-9a-zA-Z]{24}`),
     "Stripe Restricted Api Key":     regexp.MustCompile(`rk_live_[0-9a-zA-Z]{24}`),
-    "Square Access Token 2":         regexp.MustCompile(`sq0atp-[0-9A-Za-z\\-_]{22}`),
-    "Square Oauth Secret 2":         regexp.MustCompile(`sq0csp-[0-9A-Za-z\\-_]{43}`),
+    "Square Access Token 2":         regexp.MustCompile(`\bsq0atp-[0-9A-Za-z_\-]{22}\b`),
+    "Square Oauth Secret 2":         regexp.MustCompile(`\bsq0csp-[0-9A-Za-z_\-]{43}\b`),
     "Twitter Access Token":          regexp.MustCompile(`(?i)\b(?:twitter|tw)\s*[_-]?access[_-]?token\s*[:=]\s*["']?[0-9]+-[0-9a-zA-Z]{40}["']?`),
-	"Heroku Api Key 3":              regexp.MustCompile(`(?i)[hH][eE][rR][oO][kK][uU].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}`),
+	"Heroku Api Key 3":              regexp.MustCompile(`(?i)\bheroku\b[^\n]{0,80}\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`),
     "Generic Api Key":               regexp.MustCompile(`(?i)\bapi[_-]?key\s*[:=]\s*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
     "Generic Secret":                regexp.MustCompile(`(?i)\bsecret\s*[:=]\s*['\"]?[0-9a-zA-Z]{32,45}['\"]?`),
     "Slack Webhook":                 regexp.MustCompile(`https://hooks[.]slack[.]com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}`),
     "Gcp Service Account":           regexp.MustCompile(`\"type\": \"service_account\"`),
-    "Password in Url":               regexp.MustCompile(`[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]`),
+    "Password in Url":               regexp.MustCompile(`[a-zA-Z]{3,10}://[^/\s:@"']{3,32}:[^/\s:@"']{3,128}@[a-zA-Z0-9.\-]{3,200}`),
 	"Discord Webhook url":           regexp.MustCompile(`https://discord(?:app)?\.com/api/webhooks/[0-9]{18,20}/[A-Za-z0-9_-]{64,}`),
 	"Discord bot Token":             regexp.MustCompile(`[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}`),
 	"Okta Api Token":                regexp.MustCompile(`00[a-zA-Z0-9]{30}\.[a-zA-Z0-9\-_]{30,}\.[a-zA-Z0-9\-_]{30,}`),
@@ -131,18 +130,18 @@ var (
 	"Gitlab Personal Access token":  regexp.MustCompile(`glpat-[A-Za-z0-9\-]{20}`),
 	"Datadog Api Key":               regexp.MustCompile(`ddapi_[a-zA-Z0-9]{32}`),
 	"shopify Access Token":          regexp.MustCompile(`shpat_[A-Za-z0-9]{32}`),
-    "Atlassian Access Token":        regexp.MustCompile(`[a-zA-Z0-9]{20,}\.[a-zA-Z0-9_-]{6,}\.[a-zA-Z0-9_-]{25,}`),
-	"Crowdstrike Api Key":           regexp.MustCompile(`(?i)^[A-Za-z0-9]{32}\.[A-Za-z0-9]{16}$`),
-	"Quickbooks Api Key":            regexp.MustCompile(`A[0-9a-f]{32}`),
-	"Cisco Api Key":                 regexp.MustCompile(`cisco[A-Za-z0-9]{30}`),
-	"Cisco Access Token":            regexp.MustCompile(`access_token=\w+`),
-	"Segment Write Key":             regexp.MustCompile(`sk_[A-Za-z0-9]{32}`),
-	"Tiktok Access Token":           regexp.MustCompile(`tiktok_access_token=[a-zA-Z0-9_]+`),
+    "Atlassian Access Token":        regexp.MustCompile(`(?i)\b(?:atlassian|jira|confluence)[_-]?(?:api[_-]?)?token\s*[:=]\s*["']?ATATT3[A-Za-z0-9_\-]{180,250}["']?`),
+	"Crowdstrike Api Key":           regexp.MustCompile(`(?i)\b(?:crowdstrike|cs)[_-]?(?:api[_-]?)?(?:key|token)\s*[:=]\s*["']?[A-Za-z0-9]{32}\.[A-Za-z0-9]{16}["']?`),
+	"Quickbooks Api Key":            regexp.MustCompile(`(?i)\b(?:quickbooks|qbo|intuit)[_-]?(?:api[_-]?)?(?:key|token)\s*[:=]\s*["']?A[0-9a-f]{32}["']?`),
+	"Cisco Api Key":                 regexp.MustCompile(`(?i)\bcisco[_-]?(?:api[_-]?)?key\s*[:=]\s*["']?[A-Za-z0-9]{30,}["']?`),
+	"Cisco Access Token":            regexp.MustCompile(`(?i)\bcisco[_-]?access[_-]?token\s*[:=]\s*["']?[A-Za-z0-9_\-]{20,}["']?`),
+	"Segment Write Key":             regexp.MustCompile(`(?i)\b(?:segment[_-]?)?writeKey\s*[:=]\s*["']?[A-Za-z0-9]{32}["']?`),
+	"Tiktok Access Token":           regexp.MustCompile(`\btiktok_access_token=[a-zA-Z0-9_]{20,}\b`),
 	"Slack Client Secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
-    "Phone Number":                  regexp.MustCompile(`^\+\d{9,14}$`),
+    "Phone Number":                  regexp.MustCompile(`(?:^|[^\d])\+\d{9,14}(?:[^\d]|$)`),
     "Email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
-	"Ali Cloud Access Key":		     regexp.MustCompile(`^LTAI[A-Za-z0-9]{12,20}$`),
-	"Tencent Cloud Access Key":	     regexp.MustCompile(`^AKID[A-Za-z0-9]{13,20}$`),
+	"Ali Cloud Access Key":		     regexp.MustCompile(`\bLTAI[A-Za-z0-9]{12,20}\b`),
+	"Tencent Cloud Access Key":	     regexp.MustCompile(`\bAKID[A-Za-z0-9]{13,20}\b`),
         "OpenAI API Key":                regexp.MustCompile(`sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20}`),
         "OpenAI API Key Project":        regexp.MustCompile(`sk-proj-[a-zA-Z0-9]{48,}`),
         "OpenAI API Key Svc":            regexp.MustCompile(`sk-svcacct-[a-zA-Z0-9_-]{80,}`),
@@ -230,7 +229,7 @@ var (
         "Bitbucket OAuth Secret":        regexp.MustCompile(`(?i)bitbucket[_-]?(?:oauth)?[_-]?secret\s*[:=]\s*["']?[a-zA-Z0-9]{32,}["']?`),
         "Contentful Management Token":   regexp.MustCompile(`CFPAT-[a-zA-Z0-9_-]{43}`),
         "Contentful Delivery Token":     regexp.MustCompile(`(?i)contentful[_-]?(?:delivery)?[_-]?token\s*[:=]\s*["']?[a-zA-Z0-9_-]{43}["']?`),
-        "Sanity Token":                  regexp.MustCompile(`sk[a-zA-Z0-9]{32,}`),
+        "Sanity Token":                  regexp.MustCompile(`(?i)\bsanity[_-]?(?:api[_-]?)?token\s*[:=]\s*["']?sk[a-zA-Z0-9]{32,}["']?`),
         "Strapi API Token":              regexp.MustCompile(`(?i)strapi[_-]?(?:api)?[_-]?token\s*[:=]\s*["']?[a-f0-9]{256}["']?`),
         "Postmark Server Token":         regexp.MustCompile(`(?i)postmark[_-]?(?:server)?[_-]?token\s*[:=]\s*["']?[a-f0-9-]{36}["']?`),
         "SparkPost API Key":             regexp.MustCompile(`(?i)sparkpost[_-]?(?:api)?[_-]?key\s*[:=]\s*["']?[a-f0-9]{40}["']?`),
@@ -320,6 +319,59 @@ type Config struct {
     
     // Output
     JSON, CSV, Verbose, Burp bool
+
+    // v0.6: false-positive pipeline controls.
+    // MinConfidence gates findings; ShowConfidence prints the score inline.
+    // NoFPFilter disables the legacy FP filter (debug only). SelfTest runs
+    // the rule registry against its TP/FP fixtures and exits. MaxBytes caps
+    // response body reads (gzip-bomb defense). AllowInternal opts in to
+    // file://, localhost, and RFC1918 targets — off by default to avoid SSRF.
+    MinConfidence  float64
+    ShowConfidence bool
+    NoFPFilter     bool
+    SelfTest       bool
+    MaxBytes       int64
+    AllowInternal  bool
+
+    // v0.6+: live verification + observability + extensibility.
+    // Verify enables read-only liveness probes against provider endpoints
+    // (Stripe /v1/balance, GitHub /user, OpenAI /v1/models, Slack auth.test, etc.).
+    // VerifyTimeout bounds each probe; PerHost caps outbound concurrency per host.
+    // Stats prints per-stage counters at end of run; ShowSecrets toggles
+    // raw-value vs redacted-value console output (file output is always full).
+    // RulesFile loads an external JSON rule pack at startup.
+    Verify         bool
+    VerifyTimeout  int
+    PerHost        int
+    Stats          bool
+    ShowSecrets    bool
+    RulesFile      string
+
+    // v0.6++: I/O formats, suppressions, registry introspection, deltas.
+    // SARIF and NDJSON are alternative output modes; IgnoreFile is a
+    // permanent suppression list; DiffFile takes a previous JSON envelope
+    // and reports only new findings; OnlyRules/DisableRule apply a registry
+    // filter; HARFile bypasses the fetcher and reads from a Chrome HAR
+    // archive directly; NoColor disables ANSI color (also auto when stdout
+    // is not a TTY).
+    SARIF          bool
+    NDJSON         bool
+    IgnoreFile     string
+    DiffFile       string
+    OnlyRules      string
+    DisableRule    string
+    HARFile        string
+    NoColor        bool
+    IgnoreSet      *IgnoreList
+    DiffSeen       map[string]bool
+
+    // v0.6+++: page-aware crawling, source maps, cache, robots, concurrent verify.
+    CacheDir       string
+    Robots         bool
+    InlineHTML     bool
+    CSPOrigins     bool
+    VerifyWorkers  int
+    Cache          *DiskCache
 }
 
 func main() {
@@ -436,8 +488,100 @@ func main() {
     flag.BoolVar(&burp, "n", false, "Burp Suite export format")
     flag.BoolVar(&burp, "burp", false, "Burp Suite export format")
 
+    // v0.6 — FP pipeline controls
+    var minConfidence float64
+    var showConfidence, noFPFilter, selfTest, allowInternal bool
+    var maxBytes int64
+    flag.Float64Var(&minConfidence, "mc", DefaultMinConfidence, "Minimum confidence (0.0-1.0) for a finding to be reported")
+    flag.Float64Var(&minConfidence, "min-confidence", DefaultMinConfidence, "Minimum confidence (0.0-1.0) for a finding to be reported")
+    flag.BoolVar(&showConfidence, "sc", false, "Show confidence score on each printed finding")
+    flag.BoolVar(&showConfidence, "show-confidence", false, "Show confidence score on each printed finding")
+    flag.BoolVar(&noFPFilter, "no-fp-filter", false, "Disable false-positive filter (debug; keep all matches)")
+    flag.BoolVar(&selfTest, "self-test", false, "Run the rule registry against its built-in TP/FP fixtures and exit")
+    flag.Int64Var(&maxBytes, "max-bytes", DefaultMaxBytes, "Cap response body read size in bytes (gzip-bomb defense)")
+    flag.BoolVar(&allowInternal, "allow-internal", false, "Allow file://, localhost, and RFC1918 targets (off by default to prevent SSRF)")
+
+    // v0.6+ — verifier, stats, extensibility
+    var verify, stats, showSecrets bool
+    var verifyTimeout, perHost int
+    var rulesFile string
+    flag.BoolVar(&verify, "verify", false, "Probe each finding against the provider's read-only endpoint (off by default; opt-in)")
+    flag.IntVar(&verifyTimeout, "verify-timeout", 10, "Timeout in seconds for each verification probe")
+    flag.IntVar(&perHost, "per-host", defaultPerHostConcurrency, "Per-host outbound concurrency cap (avoids getting banned)")
+    flag.BoolVar(&stats, "stats", false, "Print per-stage counters (URLs fetched, FP-drops by reason, findings) on stderr at end of run")
+    flag.BoolVar(&showSecrets, "show-secrets", false, "Print full secret values to the console (default: redact in console; full value still goes to -o file)")
+    flag.StringVar(&rulesFile, "rules-file", "", "Load an external JSON rule pack at startup (additive to built-in registry)")
+
+    // v0.6++ — I/O formats, suppressions, deltas, registry introspection
+    var sarifOut, ndjsonOut, listRules, noColor bool
+    var explainID, ignoreFile, diffFile, onlyRules, disableRule, harFile string
+    flag.BoolVar(&sarifOut, "sarif", false, "Emit SARIF 2.1.0 (suitable for GitHub code-scanning)")
+    flag.BoolVar(&ndjsonOut, "ndjson", false, "Stream findings as newline-delimited JSON")
+    flag.StringVar(&ignoreFile, "ignore-file", "", "Path to .jshunterignore for permanent suppression")
+    flag.StringVar(&diffFile, "diff", "", "Diff against a previous JSON envelope; only NEW findings reported")
+    flag.BoolVar(&listRules, "list-rules", false, "Print the rule registry as a table and exit")
+    flag.StringVar(&explainID, "explain", "", "Print the full rule definition (incl. TP/FP fixtures) and exit")
+    flag.StringVar(&onlyRules, "only-rules", "", "Comma-separated rule_id patterns; only matching rules run (supports * glob)")
+    flag.StringVar(&disableRule, "disable-rule", "", "Comma-separated rule_id patterns to disable (supports * glob)")
+    flag.StringVar(&harFile, "har", "", "Ingest a Chrome DevTools HAR file instead of fetching URLs")
+    flag.BoolVar(&noColor, "no-color", false, "Disable ANSI color (auto-disabled when stdout is not a TTY)")
+
+    // v0.6+++ — page-aware crawling, sourcemaps, cache, robots, concurrent verify
+    var cacheDir string
+    var robotsMode, inlineHTML, cspOrigins bool
+    var verifyWorkers int
+    flag.StringVar(&cacheDir, "cache-dir", "", "Persist HTTP responses on disk for ETag-based revalidation")
+    flag.BoolVar(&robotsMode, "robots", false, "Fetch /robots.txt for the target host(s) and print Disallow paths")
+    flag.BoolVar(&inlineHTML, "inline-html", false, "Scan inline <script> tags and SRI/CSP from HTML responses")
+    flag.BoolVar(&cspOrigins, "csp-origins", false, "Extract Content-Security-Policy origins as candidate endpoints")
+    flag.IntVar(&verifyWorkers, "verify-workers", 8, "Worker pool size for concurrent --verify probes")
 
     flag.Parse()
+
+    // Apply rule-registry selection BEFORE any subcommand that depends on
+    // the rule set (--list-rules, --explain, --self-test).
+    if onlyRules != "" || disableRule != "" {
+        kept := applyRuleSelection(onlyRules, disableRule)
+        if !quiet {
+            fmt.Fprintf(os.Stderr, "[%sINFO%s] rule selection applied: %d rules active\n",
+                colors["CYAN"], colors["NC"], kept)
+        }
+    }
+
+    if listRules {
+        runListRules()
+        return
+    }
+    if explainID != "" {
+        runExplainRule(explainID)
+        return
+    }
+
+    // TTY autodetect: disable colors when stdout is not a terminal so piped
+    // output stays clean. --no-color forces disable in any case.
+    if noColor || !isStdoutTTY() {
+        disableColors()
+    }
+
+    if rulesFile != "" {
+        n, err := LoadRulesFile(rulesFile)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "[%sERROR%s] rules file: %v\n", colors["RED"], colors["NC"], err)
+            os.Exit(2)
+        }
+        if !quiet {
+            fmt.Fprintf(os.Stderr, "[%sINFO%s] loaded %d external rules from %s\n", colors["CYAN"], colors["NC"], n, rulesFile)
+        }
+    }
+
+    if perHost > 0 {
+        getHostController().perHost = perHost
+    }
+
+    if selfTest {
+        runSelfTestCLI()
+        return
+    }
 
     // Process User-Agent: check if it's a file path or a string
     var userAgentsList []string
@@ -461,7 +605,6 @@ func main() {
                     }
                     if len(userAgentsList) > 0 {
                         // Select a random user agent from the list
-                        rand.Seed(time.Now().UnixNano())
                         finalUserAgent = userAgentsList[rand.Intn(len(userAgentsList))]
                         if !quiet {
                             fmt.Printf("[%sINFO%s] Loaded %d user agents from file, using: %s\n", 
@@ -496,6 +639,95 @@ func main() {
         GraphQL: graphql, Bypass: bypass, Firebase: firebase, Links: links,
         CrawlDepth: crawlDepth, Domain: domain, Ext: ext,
         JSON: jsonOut, CSV: csvOut, Verbose: verbose, Burp: burp,
+        MinConfidence: minConfidence, ShowConfidence: showConfidence,
+        NoFPFilter: noFPFilter, SelfTest: selfTest,
+        MaxBytes: maxBytes, AllowInternal: allowInternal,
+        Verify: verify, VerifyTimeout: verifyTimeout, PerHost: perHost,
+        Stats: stats, ShowSecrets: showSecrets, RulesFile: rulesFile,
+        SARIF: sarifOut, NDJSON: ndjsonOut,
+        IgnoreFile: ignoreFile, DiffFile: diffFile,
+        OnlyRules: onlyRules, DisableRule: disableRule,
+        HARFile: harFile, NoColor: noColor,
+        CacheDir: cacheDir, Robots: robotsMode,
+        InlineHTML: inlineHTML, CSPOrigins: cspOrigins,
+        VerifyWorkers: verifyWorkers,
+    }
+
+    // Initialize the run-wide stats struct lazily; counters are no-op when
+    // --stats isn't requested but Inc() calls remain cheap and uniform.
+    initStats()
+
+    // Disk cache: enabled when --cache-dir is set. Failure to mkdir is
+    // a hard error — silent fallback would surprise operators expecting
+    // 304s and finding full re-downloads instead.
+    if config.CacheDir != "" {
+        dc, err := NewDiskCache(config.CacheDir)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "[%sERROR%s] cache-dir: %v\n", colors["RED"], colors["NC"], err)
+            os.Exit(2)
+        }
+        config.Cache = dc
+        if !quiet {
+            fmt.Fprintf(os.Stderr, "[%sINFO%s] disk cache active at %s\n",
+                colors["CYAN"], colors["NC"], config.CacheDir)
+        }
+    }
+
+    // --robots: opt-in fetch of /robots.txt for each unique host in the
+    // input. Prints disallowed paths and sitemap references; does NOT
+    // make JSHunter respect them on subsequent fetches.
+    if config.Robots {
+        runRobotsCLI(&config)
+        return
+    }
+
+    // Load .jshunterignore if specified — operator-managed permanent
+    // suppression of known-noise findings.
+    if config.IgnoreFile != "" {
+        il, err := LoadIgnoreFile(config.IgnoreFile)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "[%sERROR%s] ignore file: %v\n", colors["RED"], colors["NC"], err)
+            os.Exit(2)
+        }
+        config.IgnoreSet = il
+        activeIgnoreList = il
+        if !quiet && il != nil {
+            fmt.Fprintf(os.Stderr, "[%sINFO%s] loaded %d ignore entries\n",
+                colors["CYAN"], colors["NC"], len(il.Entries))
+        }
+    }
+
+    // Load --diff baseline. New findings only — anything in the previous
+    // envelope (by value_hash) is suppressed so CI gates can fail on
+    // genuine regressions.
+    if config.DiffFile != "" {
+        seen, err := DiffPrevious(config.DiffFile)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "[%sERROR%s] diff: %v\n", colors["RED"], colors["NC"], err)
+            os.Exit(2)
+        }
+        config.DiffSeen = seen
+        activeDiffSeen = seen
+        if !quiet {
+            fmt.Fprintf(os.Stderr, "[%sINFO%s] diff baseline carries %d known finding hashes\n",
+                colors["CYAN"], colors["NC"], len(seen))
+        }
+    }
+
+    // HAR ingestion is mutually exclusive with URL/list/file fetch paths;
+    // when --har is set we shortcut the dispatch entirely.
+    if config.HARFile != "" {
+        n, err := IngestHAR(config.HARFile, &config)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "[%sERROR%s] har: %v\n", colors["RED"], colors["NC"], err)
+            os.Exit(2)
+        }
+        if !quiet {
+            fmt.Fprintf(os.Stderr, "[%sINFO%s] HAR scan complete: %d JS entries\n",
+                colors["CYAN"], colors["NC"], n)
+        }
+        emitFinalOutput(&config)
+        return
     }
 
     if help {
@@ -517,7 +749,7 @@ func main() {
             }
             
             // Read all stdin content
-            stdinContent, err := ioutil.ReadAll(os.Stdin)
+            stdinContent, err := io.ReadAll(os.Stdin)
             if err != nil {
                 if !config.Quiet {
                     fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
@@ -668,6 +900,282 @@ func main() {
 }
 
 
+// runRobotsCLI fetches /robots.txt for each unique host in --url/--list
+// input and prints the parsed Disallow / Allow / Sitemap lines. This is a
+// pure recon helper: JSHunter does not honor robots.txt for its own fetch
+// path — operators who want compliance can pipe these paths back in.
+func runRobotsCLI(config *Config) {
+    client := createHTTPClientWithConfig(config)
+    hosts := collectHostsFromInput(config)
+    if len(hosts) == 0 {
+        fmt.Fprintf(os.Stderr, "[%sWARN%s] --robots: no input URLs to inspect (use -u or -l)\n",
+            colors["YELLOW"], colors["NC"])
+        return
+    }
+    for _, h := range hosts {
+        r, err := FetchRobots(client, h, config.UserAgent)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "[%sROBOTS%s] %s: %v\n", colors["YELLOW"], colors["NC"], h, err)
+            continue
+        }
+        if r == nil {
+            fmt.Printf("# %s — no robots.txt\n", h)
+            continue
+        }
+        fmt.Printf("# %s\n", r.URL)
+        for _, p := range r.Disallow {
+            fmt.Printf("Disallow %s%s\n", strings.TrimRight(h, "/"), p)
+        }
+        for _, p := range r.Allow {
+            fmt.Printf("Allow    %s%s\n", strings.TrimRight(h, "/"), p)
+        }
+        for _, s := range r.Sitemaps {
+            fmt.Printf("Sitemap  %s\n", s)
+        }
+    }
+}
+
+// collectHostsFromInput dedupes the scheme://host roots from --url and --list
+// so each host is asked for /robots.txt exactly once.
+func collectHostsFromInput(config *Config) []string {
+    seen := map[string]struct{}{}
+    out := []string{}
+    add := func(u string) {
+        u = strings.TrimSpace(u)
+        if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+            return
+        }
+        parsed, err := url.Parse(u)
+        if err != nil {
+            return
+        }
+        root := parsed.Scheme + "://" + parsed.Host
+        if _, ok := seen[root]; !ok {
+            seen[root] = struct{}{}
+            out = append(out, root)
+        }
+    }
+    if config.URL != "" {
+        add(config.URL)
+    }
+    if config.List != "" {
+        f, err := os.Open(config.List)
+        if err == nil {
+            defer f.Close()
+            sc := bufio.NewScanner(f)
+            for sc.Scan() {
+                add(sc.Text())
+            }
+        }
+    }
+    return out
+}
+
+// emitFinalOutput is the run-shutdown hook. Order matters:
+//  1. AWS pair verification (if --verify) — needs the dedupe table to be
+//     fully populated so AKID + secret in the same source can be paired.
+//  2. SARIF output (if --sarif).
+//  3. NDJSON output (if --ndjson).
+//  4. Stats summary (if --stats).
+// SARIF and NDJSON are mutually permissive — both can be emitted in the
+// same run, but operators typically pick one.
+func emitFinalOutput(config *Config) {
+    if config.Verify {
+        verifyClient := createHTTPClientWithConfig(config)
+        timeout := time.Duration(config.VerifyTimeout) * time.Second
+        if timeout <= 0 {
+            timeout = 10 * time.Second
+        }
+
+        // Per-finding verifiers run concurrently across a bounded worker
+        // pool. Per-host limits still apply via verifyHostLimiter.
+        all := flushFindings()
+        if len(all) > 0 {
+            VerifyAllConcurrent(all, verifyClient, timeout, config.VerifyWorkers)
+        }
+
+        // AWS pair verification is separate: the SigV4 path is paired
+        // (AKID + secret) and lives outside the per-finding verifier map.
+        for _, p := range pairAWSCredentials() {
+            if globalStats != nil {
+                statInc(&globalStats.VerifyAttempts)
+            }
+            ctx, cancel := context.WithTimeout(context.Background(), timeout)
+            res := verifyAWSPair(ctx, verifyClient, p)
+            cancel()
+            findingsMutex.Lock()
+            for _, f := range findingsByHash {
+                if (f.RuleID == "aws.access_key_id" && f.Value == p.AccessKeyID) ||
+                    (f.RuleID == "aws.secret_access_key" && f.Value == p.SecretAccessKey) {
+                    f.Verify = &res
+                    if res.Alive {
+                        f.Verified = true
+                        f.Confidence = 1.0
+                    }
+                }
+            }
+            findingsMutex.Unlock()
+            switch {
+            case res.Alive && globalStats != nil:
+                statInc(&globalStats.VerifyAlive)
+            case res.Error != "" && globalStats != nil:
+                statInc(&globalStats.VerifyError)
+            case globalStats != nil:
+                statInc(&globalStats.VerifyDead)
+            }
+        }
+    }
+    if config.SARIF {
+        outputSARIF()
+    }
+    if config.NDJSON {
+        outputNDJSON()
+    }
+    if config.Stats {
+        printStats(globalStats)
+    }
+}
+
+// runSelfTestCLI exercises the curated rule registry against its embedded
+// TP/FP fixtures and prints a per-rule precision/recall summary. Exits with
+// non-zero status if any rule fails — useful in CI to gate detector regressions.
+func runSelfTestCLI() {
+    results := runSelfTest()
+    overallOK := true
+    fmt.Printf("[%sSELF-TEST%s] JShunter %s rule registry\n", colors["BLUE"], colors["NC"], version)
+    for _, r := range results {
+        statusColor := colors["GREEN"]
+        statusText := "PASS"
+        if !r.OK {
+            statusColor = colors["RED"]
+            statusText = "FAIL"
+            overallOK = false
+        }
+        fmt.Printf("  [%s%s%s] %-40s  TP %d/%d  FP %d/%d\n",
+            statusColor, statusText, colors["NC"],
+            r.Name, r.TPPassed, r.TPTotal, r.FPCaught, r.FPTotal)
+        for _, n := range r.Notes {
+            fmt.Printf("        %s%s%s %s\n", colors["YELLOW"], "·", colors["NC"], n)
+        }
+    }
+    if !overallOK {
+        os.Exit(1)
+    }
+}
+
+// looksLikeHTMLContentType is the content-type-only sibling of
+// looksLikeHTML; used pre-body-read so we can decide whether to take the
+// inline-HTML path before allocating the body slice.
+func looksLikeHTMLContentType(ct string) bool {
+    if ct == "" {
+        return false
+    }
+    low := strings.ToLower(ct)
+    if i := strings.Index(low, ";"); i != -1 {
+        low = low[:i]
+    }
+    low = strings.TrimSpace(low)
+    return low == "text/html" || low == "application/xhtml+xml"
+}
+
+// scanHTMLArtifacts pulls inline <script> bodies and SRI/CSP metadata out
+// of an HTML response and feeds each through reportMatchesWithConfig under
+// a synthetic source label so operators can locate the exact tag.
+func scanHTMLArtifacts(pageURL string, body []byte, config *Config) {
+    arts, err := ExtractFromHTML(body)
+    if err != nil {
+        if config.Verbose {
+            fmt.Printf("[%sHTML%s] %s: %v\n", colors["YELLOW"], colors["NC"], pageURL, err)
+        }
+        return
+    }
+    for _, sc := range arts.InlineScripts {
+        // application/ld+json is structured data; still scan because it
+        // sometimes carries access tokens or webhook URLs.
+        src := fmt.Sprintf("%s#inline[%d]", pageURL, sc.Index)
+        if globalStats != nil {
+            statAdd(&globalStats.BytesParsed, int64(len(sc.Body)))
+        }
+        processed := processJSAnalysis([]byte(sc.Body), config)
+        reportMatchesWithConfig(src, processed, config)
+    }
+    if config.CSPOrigins && len(arts.CSPOrigins) > 0 {
+        emitCSPOrigins(pageURL+"#meta-csp", arts.CSPOrigins)
+    }
+    if config.Verbose && len(arts.ExternalJS) > 0 {
+        fmt.Printf("[%sHTML%s] %s: %d external scripts referenced\n",
+            colors["CYAN"], colors["NC"], pageURL, len(arts.ExternalJS))
+    }
+}
+
+// emitCSPOrigins prints CSP-allowed origins one per line, prefixed with
+// the source for grep-friendly piping into the URL queue of a follow-up
+// scan. Concise and pipeline-friendly.
+func emitCSPOrigins(source string, origins []string) {
+    for _, o := range origins {
+        fmt.Printf("[CSP] %s\t%s\n", source, o)
+    }
+}
+
+// consoleRedact masks the secret portion of a `match` for console display
+// when --show-secrets is OFF. It tolerates the optional " [conf=X.XX]"
+// suffix (and the optional " VERIFIED" tag inside it) and only redacts the
+// secret prefix, so confidence/verification info still rides the line.
+//
+// File output paths bypass this — the operator who passed `-o` opted into
+// receiving the full value.
+func consoleRedact(match string, config *Config) string {
+    if config.ShowSecrets {
+        return match
+    }
+    // Find an optional confidence suffix.
+    suffix := ""
+    val := match
+    if idx := strings.LastIndex(match, " [conf="); idx >= 0 && strings.HasSuffix(match, "]") {
+        val = match[:idx]
+        suffix = match[idx:]
+    }
+    // Don't redact obvious URLs/links/emails — those aren't secrets.
+    if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") ||
+        strings.HasPrefix(val, "ws://") || strings.HasPrefix(val, "wss://") ||
+        strings.Contains(val, "@") {
+        return match
+    }
+    return redactValue(val) + suffix
+}
+
+// validateTargetURL refuses internal/loopback/private targets unless the user
+// explicitly opts in. Recon tools that follow links are SSRF-prone if they
+// blindly fetch any URL the input feeds them; this gate is the smallest
+// useful guard. Only http/https are allowed; file:// is always rejected.
+func validateTargetURL(urlStr string, allowInternal bool) error {
+    if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+        return fmt.Errorf("only http(s) URLs are permitted; got %q", urlStr)
+    }
+    parsed, err := url.Parse(urlStr)
+    if err != nil {
+        return fmt.Errorf("malformed URL: %w", err)
+    }
+    host := parsed.Hostname()
+    if host == "" {
+        return fmt.Errorf("URL has no host")
+    }
+    if allowInternal {
+        return nil
+    }
+    lowHost := strings.ToLower(host)
+    if lowHost == "localhost" || lowHost == "ip6-localhost" || lowHost == "ip6-loopback" {
+        return fmt.Errorf("internal target %q blocked (use --allow-internal to override)", host)
+    }
+    if ip := net.ParseIP(host); ip != nil {
+        if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+            ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+            return fmt.Errorf("internal IP %q blocked (use --allow-internal to override)", host)
+        }
+    }
+    return nil
+}
+
 func displayAsciiArt() {
     versionStatus := getVersionStatus()
     var statusColor string
@@ -744,10 +1252,52 @@ func customHelp() {
     fmt.Println("  -E, --ext                    Filter by JavaScript file extensions")
     fmt.Println()
     fmt.Println("Output Formats:")
-    fmt.Println("  -j, --json                   Structured JSON output format")
+    fmt.Println("  -j, --json                   Structured JSON output format (schema_version 2)")
     fmt.Println("  -C, --csv                    CSV format for spreadsheet analysis")
     fmt.Println("  -v, --verbose                Detailed analysis and debug output")
     fmt.Println("  -n, --burp                   Burp Suite compatible export format")
+    fmt.Println()
+    fmt.Println("False-Positive Pipeline (v0.6):")
+    fmt.Println("  -mc, --min-confidence FLOAT  Minimum confidence (0.0-1.0) for a finding (default 0.50)")
+    fmt.Println("  -sc, --show-confidence       Print [conf=X.XX] alongside each finding")
+    fmt.Println("      --no-fp-filter           Disable the FP filter (debug; keeps every match)")
+    fmt.Println("      --self-test              Run rule registry against built-in TP/FP fixtures")
+    fmt.Println("      --max-bytes N            Cap response body read in bytes (gzip-bomb defense)")
+    fmt.Println("      --allow-internal         Permit file://, localhost, and RFC1918 targets (off by default)")
+    fmt.Println()
+    fmt.Println("Verification & Trust (v0.6+):")
+    fmt.Println("      --verify                 Probe each finding against provider read-only endpoint")
+    fmt.Println("                                (Stripe, GitHub, OpenAI, Anthropic, Slack, SendGrid,")
+    fmt.Println("                                 Mailgun, HuggingFace, AWS pair via SigV4)")
+    fmt.Println("      --verify-timeout SEC     Timeout per verification probe (default: 10)")
+    fmt.Println("      --per-host INT           Per-host outbound concurrency cap (default: 4)")
+    fmt.Println("      --stats                  Print per-stage counters on stderr at end of run")
+    fmt.Println("      --show-secrets           Print full values to console (default: redact in console)")
+    fmt.Println("      --rules-file FILE.json   Load an external JSON rule pack at startup")
+    fmt.Println()
+    fmt.Println("Output Modes & Suppressions (v0.6++):")
+    fmt.Println("      --sarif                  Emit SARIF 2.1.0 (GitHub code-scanning compatible)")
+    fmt.Println("      --ndjson                 Emit findings as newline-delimited JSON (jq/SIEM friendly)")
+    fmt.Println("      --ignore-file FILE       Permanent suppressions (.jshunterignore format)")
+    fmt.Println("      --diff PREVIOUS.json     Report only NEW findings vs previous JSON envelope")
+    fmt.Println("      --no-color               Disable ANSI color (auto-disabled when not a TTY)")
+    fmt.Println()
+    fmt.Println("Registry Introspection:")
+    fmt.Println("      --list-rules             Print the rule registry as a table and exit")
+    fmt.Println("      --explain RULE_ID        Print full rule details (incl. fixtures) and exit")
+    fmt.Println("      --only-rules id,glob     Run only matching rules (supports * glob)")
+    fmt.Println("      --disable-rule id,glob   Disable matching rules (supports * glob)")
+    fmt.Println()
+    fmt.Println("Alternative Inputs:")
+    fmt.Println("      --har FILE               Ingest a Chrome DevTools HAR archive (skip fetcher)")
+    fmt.Println()
+    fmt.Println("Page-Aware Crawling (v0.6+++):")
+    fmt.Println("      --inline-html            Scan inline <script> tags + SRI/CSP in HTML responses")
+    fmt.Println("      --csp-origins            Emit CSP-allowed origins as candidate endpoints")
+    fmt.Println("      --robots                 Fetch /robots.txt for each input host and exit")
+    fmt.Println("      --cache-dir DIR          Persist responses on disk; revalidate via ETag")
+    fmt.Println("      --verify-workers INT     Concurrent verifier worker pool size (default 8)")
+    fmt.Println()
     fmt.Println("  -h, --help                   Display this help message")
 }
 
@@ -770,7 +1320,18 @@ func isInputFromStdin() bool {
         fmt.Println("Error checking stdin:", err)
         return false
     }
-    return fi.Mode()&os.ModeCharDevice == 0 
+    return fi.Mode()&os.ModeCharDevice == 0
+}
+
+// isStdoutTTY returns true when stdout is a terminal — used to auto-disable
+// ANSI color when the operator is piping or redirecting output. The
+// `os.ModeCharDevice` check is the same heuristic POSIX `isatty(3)` exposes.
+func isStdoutTTY() bool {
+    fi, err := os.Stdout.Stat()
+    if err != nil {
+        return false
+    }
+    return fi.Mode()&os.ModeCharDevice != 0
 }
 
 func disableColors() {
@@ -1182,7 +1743,7 @@ func searchForSensitiveData(urlStr, regex, cookie, proxyStr string, skipTLS, fou
         }
 
         // Try to read the body, even if there might be an error (partial reads are useful)
-        body, err := ioutil.ReadAll(resp.Body)
+        body, err := io.ReadAll(resp.Body)
         if err != nil {
             // Suppress TLS user canceled errors when using proxy (Burp may close connection)
             if proxyStr == "" || !isTLSCanceledError(err) {
@@ -1206,7 +1767,7 @@ func searchForSensitiveData(urlStr, regex, cookie, proxyStr string, skipTLS, fou
             sensitiveData = make(map[string][]string)
         }
     } else {
-        body, err := ioutil.ReadFile(urlStr)
+        body, err := os.ReadFile(urlStr)
         if err != nil {
             fmt.Printf("Error reading local file %s: %v\n", urlStr, err)
             return urlStr, nil
@@ -1328,7 +1889,7 @@ func getVersionStatus() string {
         return "Unknown"
     }
     
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := io.ReadAll(resp.Body)
     if err != nil {
         return "Unknown"
     }
@@ -1370,7 +1931,7 @@ func updateTool() {
         return
     }
     
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := io.ReadAll(resp.Body)
     if err != nil {
         fmt.Printf("[%sERROR%s] Failed to read response: %v\n", colors["RED"], colors["NC"], err)
         return
@@ -1479,7 +2040,7 @@ func updateTool() {
             },
         }
         
-        binaryData, err = ioutil.ReadAll(reader)
+        binaryData, err = io.ReadAll(reader)
         
         // Final progress update to show 100%
         if err == nil {
@@ -1499,7 +2060,7 @@ func updateTool() {
             fmt.Println() // New line after loader
         }
     } else {
-        binaryData, err = ioutil.ReadAll(resp.Body)
+        binaryData, err = io.ReadAll(resp.Body)
     }
     
     if err != nil {
@@ -1520,7 +2081,7 @@ func updateTool() {
         return
     }
     
-    err = ioutil.WriteFile(currentPath, binaryData, 0755)
+    err = os.WriteFile(currentPath, binaryData, 0755)
     if err != nil {
         fmt.Printf("[%sERROR%s] Failed to write new binary: %v\n", colors["RED"], colors["NC"], err)
         os.Rename(backupPath, currentPath)
@@ -1617,7 +2178,7 @@ func processInputsForEndpointsOld(url, list, output, regex, cookie, proxy string
 }
 
 func extractEndpointsFromFile(filePath, regex string) []string {
-    body, err := ioutil.ReadFile(filePath)
+    body, err := os.ReadFile(filePath)
     if err != nil {
         fmt.Printf("Error reading file %s: %v\n", filePath, err)
         return nil
@@ -2004,39 +2565,65 @@ func createHTTPClientWithConfig(config *Config) *http.Client {
     }
 }
 
-// makeRequestWithRetry makes an HTTP request with retry logic and rate limiting
+// makeRequestWithRetry makes an HTTP request with retry logic, per-host
+// concurrency cap, exponential backoff with jitter, and a 429/5xx circuit
+// breaker. The host controller's recordOutcome teaches the breaker after
+// every response, so a host that starts misbehaving is benched cooperatively
+// across the whole run rather than per-goroutine.
 func makeRequestWithRetry(client *http.Client, req *http.Request, config *Config) (*http.Response, error) {
-    // Apply rate limiting
     if config.RateLimit > 0 {
         time.Sleep(time.Duration(config.RateLimit) * time.Millisecond)
     }
-    
+
+    host := req.URL.Host
+    ctrl := getHostController()
+    release, allowed := ctrl.acquire(host)
+    defer release()
+    if !allowed {
+        if config.Verbose {
+            fmt.Printf("[%sBREAKER%s] %s\n", colors["YELLOW"], colors["NC"], describeBreaker(host))
+        }
+        return nil, fmt.Errorf("host %s circuit-broken; cooldown in effect", host)
+    }
+
     var resp *http.Response
     var err error
-    
+
     maxRetries := config.Retry
     if maxRetries < 1 {
         maxRetries = 1
     }
-    
+
     for attempt := 0; attempt < maxRetries; attempt++ {
         resp, err = client.Do(req)
         if err == nil {
+            ctrl.recordOutcome(host, resp.StatusCode, parseRetryAfter(resp.Header))
+            // 429 / 503 with Retry-After: honor before retry; otherwise return.
+            if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable) && attempt < maxRetries-1 {
+                ra := parseRetryAfter(resp.Header)
+                if ra == 0 {
+                    ra = backoffWithJitter(attempt)
+                }
+                resp.Body.Close()
+                time.Sleep(ra)
+                continue
+            }
             return resp, nil
         }
-        
+
         // Don't retry on TLS cancellation errors (proxy interception)
         if config.Proxy != "" && isTLSCanceledError(err) {
             return nil, err
         }
-        
-        // Retry with exponential backoff
+
         if attempt < maxRetries-1 {
-            backoff := time.Duration(attempt+1) * time.Second
-            time.Sleep(backoff)
+            time.Sleep(backoffWithJitter(attempt))
         }
     }
-    
+
+    if err != nil {
+        ctrl.recordOutcome(host, 0, 0)
+    }
     return nil, err
 }
 
@@ -2046,6 +2633,18 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
     var sensitiveData map[string][]string
 
     if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
+        if err := validateTargetURL(urlStr, config.AllowInternal); err != nil {
+            if globalStats != nil {
+                statInc(&globalStats.URLsBlocked)
+            }
+            if !config.Quiet {
+                fmt.Printf("[%sBLOCK%s] %v\n", colors["YELLOW"], colors["NC"], err)
+            }
+            return urlStr, nil
+        }
+        if globalStats != nil {
+            statInc(&globalStats.URLsFetched)
+        }
         req, err := http.NewRequest("GET", urlStr, nil)
         if err != nil {
             if config.Verbose {
@@ -2072,7 +2671,6 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
         // Apply custom User-Agent (randomly select from list if available)
         if len(config.UserAgents) > 0 {
             // Randomly select a user agent from the list for each request
-            rand.Seed(time.Now().UnixNano() + int64(len(req.URL.String())))
             selectedUA := config.UserAgents[rand.Intn(len(config.UserAgents))]
             req.Header.Set("User-Agent", selectedUA)
         } else if config.UserAgent != "" {
@@ -2082,6 +2680,13 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
         // Apply cookies
         if config.Cookies != "" {
             req.Header.Set("Cookie", config.Cookies)
+        }
+
+        // Cache-aware fetch: attach If-None-Match / If-Modified-Since so a
+        // re-run revalidates instead of re-downloading. The 304 path is
+        // handled below in the response branch.
+        if config.Cache != nil {
+            config.Cache.AttachConditional(req)
         }
 
         resp, err := makeRequestWithRetry(client, req, config)
@@ -2108,12 +2713,36 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
         }
         defer resp.Body.Close()
 
-        // Filter: Only process JavaScript content
-        if !shouldProcessResponse(resp, urlStr, config) {
+        // 304 Not Modified: serve from disk cache if we have a body for
+        // this URL. Cache headers were attached pre-flight when --cache-dir
+        // was set; this branch closes the loop.
+        if resp.StatusCode == http.StatusNotModified && config.Cache != nil {
+            if cb, _, ok := config.Cache.Lookup(urlStr); ok {
+                if config.Verbose {
+                    fmt.Printf("[%sCACHE%s] 304 hit for %s (%d bytes from disk)\n",
+                        colors["CYAN"], colors["NC"], urlStr, len(cb))
+                }
+                processedBody := processJSAnalysis(cb, config)
+                sensitiveData = reportMatchesWithConfig(urlStr, processedBody, config)
+                return urlStr, sensitiveData
+            }
+        }
+
+        // Decide whether to process the response. v0.6+++ accepts HTML when
+        // --inline-html is set so homepage `<script>` tags are scanned.
+        contentType := resp.Header.Get("Content-Type")
+        isHTML := looksLikeHTMLContentType(contentType)
+        if !shouldProcessResponse(resp, urlStr, config) && !(config.InlineHTML && isHTML) {
             return urlStr, nil
         }
 
-        body, err := ioutil.ReadAll(resp.Body)
+        // v0.6 — bound the body read so a hostile target can't exhaust memory
+        // via gzip bomb or pathological streaming response.
+        var bodyReader io.Reader = resp.Body
+        if config.MaxBytes > 0 {
+            bodyReader = io.LimitReader(resp.Body, config.MaxBytes)
+        }
+        body, err := io.ReadAll(bodyReader)
         if err != nil {
             if config.Proxy == "" || !isTLSCanceledError(err) {
                 if len(body) == 0 && config.Verbose {
@@ -2124,16 +2753,61 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
                 return urlStr, nil
             }
         }
+        if config.MaxBytes > 0 && int64(len(body)) >= config.MaxBytes {
+            if globalStats != nil {
+                statInc(&globalStats.BytesTruncated)
+            }
+            if config.Verbose {
+                fmt.Printf("[%sWARN%s] Truncated response from %s at %d bytes (--max-bytes)\n",
+                    colors["YELLOW"], colors["NC"], urlStr, config.MaxBytes)
+            }
+        }
+        if globalStats != nil {
+            statAdd(&globalStats.BytesParsed, int64(len(body)))
+        }
+
+        // Persist to disk cache when enabled. Skipped silently for
+        // session-bearing responses (Set-Cookie / Authorization).
+        if config.Cache != nil {
+            _ = config.Cache.Store(urlStr, resp, body)
+        }
+
+        // CSP origins from response header (pure recon: third-party hosts
+        // the page is allowed to load from). Only collected when opted in.
+        if config.CSPOrigins {
+            if csp := resp.Header.Get("Content-Security-Policy"); csp != "" {
+                emitCSPOrigins(urlStr, ParseCSPOrigins(csp))
+            }
+        }
+
+        // HTML branch: extract inline scripts and SRI/CSP from the body.
+        // Each inline script is scanned as its own source so findings are
+        // attributable to the specific tag index.
+        if config.InlineHTML && (isHTML || looksLikeHTML(body, contentType)) {
+            scanHTMLArtifacts(urlStr, body, config)
+        }
 
         // Process JS analysis features
         if len(body) > 0 {
             processedBody := processJSAnalysis(body, config)
             sensitiveData = reportMatchesWithConfig(urlStr, processedBody, config)
+
+            // Source-map ingestion — fetch <body>.map (or decode inline data
+            // URI), scan every entry in sourcesContent[]. Gated by --sourcemap.
+            if config.SourceMap {
+                n, err := FetchAndScanSourceMap(client, urlStr, body, config)
+                if err != nil && config.Verbose {
+                    fmt.Printf("[%sSOURCEMAP%s] %s: %v\n", colors["YELLOW"], colors["NC"], urlStr, err)
+                } else if n > 0 && config.Verbose {
+                    fmt.Printf("[%sSOURCEMAP%s] %s: scanned %d original sources\n",
+                        colors["CYAN"], colors["NC"], urlStr, n)
+                }
+            }
         } else {
             sensitiveData = make(map[string][]string)
         }
     } else {
-        body, err := ioutil.ReadFile(urlStr)
+        body, err := os.ReadFile(urlStr)
         if err != nil {
             if config.Verbose {
                 fmt.Printf("Error reading local file %s: %v\n", urlStr, err)
@@ -3513,6 +4187,74 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
         }
     }
     
+    // v0.6 — run the curated provider registry first. Findings here have
+    // provider-specific validators (AWS prefix+base32, Stripe base62, GitHub
+    // CRC32 checksum, JWT structural decode, Slack hyphen-segment) and are
+    // strictly higher-precision than the legacy regex map. Values detected
+    // here are tracked so the legacy loop below does not re-report them.
+    coveredByRegistry := make(map[string]struct{})
+    if !config.ParamURLs && !config.Params {
+        registryFindings := analyzeBody(source, body, config.MinConfidence)
+
+        // v0.6+ — optional liveness verification. Off by default. Each call
+        // is bounded by --verify-timeout and goes through the host limiter
+        // in verify.go to avoid stampeding a provider's API. The verify
+        // result is folded back into the Finding so JSON consumers can see
+        // alive/dead/unknown alongside the confidence score.
+        if config.Verify {
+            verifyClient := createHTTPClientWithConfig(config)
+            timeout := time.Duration(config.VerifyTimeout) * time.Second
+            if timeout <= 0 {
+                timeout = 10 * time.Second
+            }
+            for _, f := range registryFindings {
+                if _, has := verifierRegistry[f.RuleID]; !has {
+                    registerVerifiers()
+                    if _, has := verifierRegistry[f.RuleID]; !has {
+                        continue
+                    }
+                }
+                if globalStats != nil {
+                    statInc(&globalStats.VerifyAttempts)
+                }
+                vr := runVerify(f.RuleID, f.Value, verifyClient, timeout)
+                f.Verify = &vr
+                if vr.Alive {
+                    f.Verified = true
+                    f.Confidence = 1.0
+                    if globalStats != nil {
+                        statInc(&globalStats.VerifyAlive)
+                    }
+                } else if vr.Error != "" {
+                    if globalStats != nil {
+                        statInc(&globalStats.VerifyError)
+                    }
+                } else {
+                    if globalStats != nil {
+                        statInc(&globalStats.VerifyDead)
+                    }
+                }
+            }
+        }
+
+        for _, f := range registryFindings {
+            label := f.Name
+            // matchesMap stores the FULL value for the -o file path; the
+            // console redaction layer below applies --show-secrets at print.
+            display := f.Value
+            if config.ShowConfidence {
+                tag := fmt.Sprintf(" [conf=%.2f", f.Confidence)
+                if f.Verified {
+                    tag += " VERIFIED"
+                }
+                tag += "]"
+                display = display + tag
+            }
+            matchesMap[label] = append(matchesMap[label], display)
+            coveredByRegistry[f.Value] = struct{}{}
+        }
+    }
+
     // Filter by domain scope
     if config.Domain != "" {
         if !strings.Contains(source, config.Domain) {
@@ -3645,6 +4387,56 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
                         continue
                     }
 
+                    // v0.6 — skip if curated registry already reported this value.
+                    if _, already := coveredByRegistry[match]; already {
+                        continue
+                    }
+
+                    // v0.6 — false-positive pipeline.
+                    // Skip filter for URL/Link/GraphQL/Param classes which have
+                    // their own dedicated cleanup paths above; they are not
+                    // secret-class detections.
+                    skipFP := name == "Link/URL" || strings.HasPrefix(name, "GraphQL ") ||
+                        name == "Parameter" || name == "Email" || strings.HasPrefix(name, "Firebase Url")
+                    if !config.NoFPFilter && !skipFP {
+                        keep, score, _ := applyLegacyFPFilter(name, match, bodyStr, source, start, end)
+                        if !keep {
+                            continue
+                        }
+                        if config.MinConfidence > 0 && score < config.MinConfidence {
+                            if globalStats != nil {
+                                statInc(&globalStats.DroppedBelowConf)
+                            }
+                            continue
+                        }
+                        // Apply ignore-list and diff-baseline to the legacy
+                        // path too. Hash the raw value (before any
+                        // confidence-suffix mutation below).
+                        if activeIgnoreList != nil || activeDiffSeen != nil {
+                            rawHash := hashValue(match)
+                            syn := &Finding{
+                                ValueHash: rawHash,
+                                RuleID:    "legacy:" + name,
+                                Value:     match,
+                                Source:    source,
+                            }
+                            if activeIgnoreList != nil && activeIgnoreList.ShouldIgnore(syn) {
+                                continue
+                            }
+                            if activeDiffSeen != nil && activeDiffSeen[rawHash] {
+                                continue
+                            }
+                        }
+                        // matchesMap holds the FULL value (file output relies on
+                        // it). Redaction happens at console-print time only.
+                        if config.ShowConfidence {
+                            match = fmt.Sprintf("%s [conf=%.2f]", match, score)
+                        }
+                        if globalStats != nil {
+                            statInc(&globalStats.FindingsAfterFilter)
+                        }
+                    }
+
                     matches = append(matches, match)
                 }
             }
@@ -3713,6 +4505,9 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
             outputCSV(source, matchesMap)
         } else if config.Burp {
             outputBurp(source, matchesMap)
+        } else if config.SARIF || config.NDJSON {
+            // Per-source console output is suppressed; structured output
+            // is emitted exactly once at end of run via emitFinalOutput.
         } else {
             // Show FOUND message (unless quiet mode)
             if !config.Quiet {
@@ -3724,10 +4519,14 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
             for name, matches := range matchesMap {
                 for _, match := range matches {
                     key := name + ":" + match
-                    // Only print if we haven't seen this match before globally
                     if !globalSeenAll[key] {
                         globalSeenAll[key] = true
-                        fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
+                        // Console-only redaction: strip the [conf=...] suffix,
+                        // redact the value, then re-attach the suffix. The
+                        // matchesMap above still carries the full value for
+                        // file output paths.
+                        display := consoleRedact(match, config)
+                        fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], display)
                     }
                 }
             }
@@ -3763,10 +4562,18 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
 }
 
 // Output formatters
+//
+// v0.6 — JSON output is now schema_version 2. Downstream parsers should key
+// off the top-level `schema_version` field. Within a major schema version
+// changes are additive only.
 func outputJSON(source string, matchesMap map[string][]string) {
+    findings := flushFindings()
     result := map[string]interface{}{
-        "source": source,
-        "matches": matchesMap,
+        "schema_version": SchemaVersion,
+        "source":         source,
+        "matches":        matchesMap,
+        "findings":       findings,
+        "tool":           map[string]string{"name": "jshunter", "version": version},
     }
     jsonData, _ := json.MarshalIndent(result, "", "  ")
     fmt.Println(string(jsonData))
@@ -3878,6 +4685,8 @@ func processInputsWithConfig(url string, config *Config) {
         missingMessages = missingMessages[:0]
         missingMutex.Unlock()
     }
+
+    emitFinalOutput(config)
 }
 
 func processInputsForEndpointsWithConfig(url string, config *Config) {
@@ -3993,6 +4802,7 @@ func processJSFileWithConfig(jsFile string, config *Config) {
             missingMutex.Unlock()
         }
     }
+    emitFinalOutput(config)
 }
 
 func processJSFileForEndpointsWithConfig(jsFile string, config *Config) {
@@ -4040,7 +4850,6 @@ func extractEndpointsFromURLWithConfig(urlStr string, config *Config) []string {
     // Apply custom User-Agent (randomly select from list if available)
     if len(config.UserAgents) > 0 {
         // Randomly select a user agent from the list for each request
-        rand.Seed(time.Now().UnixNano() + int64(len(req.URL.String())))
         selectedUA := config.UserAgents[rand.Intn(len(config.UserAgents))]
         req.Header.Set("User-Agent", selectedUA)
         if config.Verbose {
@@ -4084,7 +4893,7 @@ func extractEndpointsFromURLWithConfig(urlStr string, config *Config) []string {
         return nil
     }
     
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := io.ReadAll(resp.Body)
     if err != nil {
         if len(body) == 0 {
             return nil 
@@ -4127,7 +4936,6 @@ func crawlAndProcessJS(initialURL string, config *Config, depth int, visited map
     // Apply custom User-Agent (randomly select from list if available)
     if len(config.UserAgents) > 0 {
         // Randomly select a user agent from the list for each request
-        rand.Seed(time.Now().UnixNano() + int64(len(req.URL.String())))
         selectedUA := config.UserAgents[rand.Intn(len(config.UserAgents))]
         req.Header.Set("User-Agent", selectedUA)
     } else if config.UserAgent != "" {
@@ -4144,7 +4952,7 @@ func crawlAndProcessJS(initialURL string, config *Config, depth int, visited map
     }
     defer resp.Body.Close()
     
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := io.ReadAll(resp.Body)
     if err != nil {
         return
     }

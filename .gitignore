@@ -1,0 +1,19 @@
+# Compiled binary (rebuilt locally; release artifacts attached on GitHub)
+/jshunter
+/jshunter.exe
+/jshunter_*
+
+# Go build/test cache
+*.test
+*.out
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Operator state
+.jshunterignore
+*.sarif
+*.har

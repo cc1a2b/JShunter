@@ -1,0 +1,21 @@
+# JSHunter ignore file.
+# One entry per line. Blank lines and lines starting with `#` are skipped.
+#
+# Supported kinds:
+#   hash:<value_hash>           # suppress one specific finding (stable across runs)
+#   rule:<rule_id_or_glob>      # suppress an entire rule or family
+#   source:<source_glob>        # suppress all findings from a source matching glob
+#   rule_value:<rule>:<value_glob>
+#                               # suppress when rule matches AND value matches glob
+#
+# Globs use filepath.Match syntax (`*`, `?`, `[abc]`).
+
+# Example: suppress an analytics SDK that always carries a public-but-rotating key
+rule:slack.webhook
+source:*/cdn.segment.com/*
+
+# Example: suppress one specific known FP by its sha256 prefix
+hash:a1b2c3d4e5f60718
+
+# Example: suppress only test JWTs from a specific bundle
+rule_value:jwt.token:*test_*
