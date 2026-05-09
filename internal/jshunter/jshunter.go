@@ -1,4 +1,4 @@
-package main
+package jshunter
 
 import (
     "bufio"
@@ -374,7 +374,7 @@ type Config struct {
     Cache          *DiskCache
 }
 
-func main() {
+func Run() {
     var (
         url, list, jsFile, output, regex, cookies, proxy string
         threads                                           int

@@ -170,7 +170,7 @@
 ### Go Install (Recommended)
 ```bash
 # Install JSHunter
-go install -v github.com/cc1a2b/jshunter@latest
+go install -v github.com/cc1a2b/jshunter/cmd/jshunter@latest
 
 # Verify installation
 jshunter --help
@@ -180,7 +180,7 @@ jshunter --help
 ```bash
 git clone https://github.com/cc1a2b/jshunter.git
 cd jshunter
-go build -o jshunter .
+go build -o jshunter ./cmd/jshunter
 ```
 
 ### System Requirements
@@ -414,7 +414,7 @@ We welcome contributions! Here's how you can help:
 git clone https://github.com/cc1a2b/jshunter.git
 cd jshunter
 go mod tidy
-go build -o jshunter .
+go build -o jshunter ./cmd/jshunter
 ```
 
 ---
