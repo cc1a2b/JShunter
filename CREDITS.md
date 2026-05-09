@@ -46,7 +46,7 @@ When a provider rotates token format or moves an endpoint, those comments
 are the single source of truth for what to update.
 
 ## License
-
+ 
 JSHunter is MIT-licensed. The works above retain their respective licenses;
 JSHunter does not vendor source from any of them. Where a regex is similar
 to a Gitleaks or detect-secrets pattern, that is convergent design on
