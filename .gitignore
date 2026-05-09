@@ -2,6 +2,7 @@
 /jshunter
 /jshunter.exe
 /jshunter_*
+/dist/
 
 # Go build/test cache
 *.test
