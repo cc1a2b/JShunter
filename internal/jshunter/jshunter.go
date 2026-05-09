@@ -27,7 +27,7 @@ import (
 
 
 var (
-    version = "v0.7.4"
+    version = "v0.7.5"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -2161,6 +2161,7 @@ func extractEndpointsFromURL(urlStr, regex, cookie, proxy string, skipTLS bool) 
 }
 
 func extractEndpointsFromContent(content, regex, targetDomain string) []string {
+    content = string(stripJSComments([]byte(content)))
     var endpoints []string
     var baseURLs []string
 
@@ -2792,6 +2793,71 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
 }
 
 // processJSAnalysis applies JS analysis features (deobfuscation, sourcemap, etc.)
+// stripJSComments replaces JS line (// ...) and block (/* ... */) comments
+// with spaces, preserving newlines and byte offsets. String literals
+// (", ', `) are copied verbatim so URLs and secrets that legitimately
+// contain // (e.g. "https://...") are kept intact.
+func stripJSComments(body []byte) []byte {
+    out := make([]byte, len(body))
+    i := 0
+    for i < len(body) {
+        c := body[i]
+
+        if c == '"' || c == '\'' || c == '`' {
+            quote := c
+            out[i] = c
+            i++
+            for i < len(body) {
+                ch := body[i]
+                out[i] = ch
+                if ch == '\\' && i+1 < len(body) {
+                    out[i+1] = body[i+1]
+                    i += 2
+                    continue
+                }
+                i++
+                if ch == quote {
+                    break
+                }
+            }
+            continue
+        }
+
+        if c == '/' && i+1 < len(body) && body[i+1] == '/' {
+            for i < len(body) && body[i] != '\n' {
+                out[i] = ' '
+                i++
+            }
+            continue
+        }
+
+        if c == '/' && i+1 < len(body) && body[i+1] == '*' {
+            out[i] = ' '
+            out[i+1] = ' '
+            i += 2
+            for i < len(body) {
+                if i+1 < len(body) && body[i] == '*' && body[i+1] == '/' {
+                    out[i] = ' '
+                    out[i+1] = ' '
+                    i += 2
+                    break
+                }
+                if body[i] == '\n' {
+                    out[i] = '\n'
+                } else {
+                    out[i] = ' '
+                }
+                i++
+            }
+            continue
+        }
+
+        out[i] = c
+        i++
+    }
+    return out
+}
+
 func processJSAnalysis(body []byte, config *Config) []byte {
     content := string(body)
     
@@ -3906,6 +3972,7 @@ func filterMatchesByDomain(matches []string, sourceURL string) []string {
 
 // reportMatchesWithConfig enhanced reporting with all security analysis features
 func reportMatchesWithConfig(source string, body []byte, config *Config) map[string][]string {
+    body = stripJSComments(body)
     matchesMap := make(map[string][]string)
     
     // Select patterns based on config
