@@ -27,7 +27,7 @@ import (
 
 
 var (
-    version = "v0.7.3"
+    version = "v0.7.4"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -2312,15 +2312,37 @@ func cleanEndpoint(endpoint string) string {
 }
 
 
+var endpointBackrefRe = regexp.MustCompile(`\$\d`)
+
 func isValidEndpoint(endpoint string) bool {
-   
+
     if endpoint == "" {
         return false
     }
-    
-    
+
+
     if strings.Contains(endpoint, "${") || strings.Contains(endpoint, "+") {
         return false
+    }
+
+    // Regex backreferences ($1, $2, $N) — synthetic, never a real URL.
+    if endpointBackrefRe.MatchString(endpoint) {
+        return false
+    }
+
+    // Protocol-relative or double-slash leading paths cause garbage joins
+    // (host + "//foo" → "host//foo"). Comments, CDN refs, JS literals.
+    if strings.HasPrefix(endpoint, "//") {
+        return false
+    }
+
+    // Truncated templated fragments — value/key placeholder was meant to be
+    // substituted at runtime ("?id=", "maps.google.", "tel:").
+    if n := len(endpoint); n > 0 {
+        switch endpoint[n-1] {
+        case '=', '.', ':', '&', '?':
+            return false
+        }
     }
     
    
