@@ -27,7 +27,7 @@ import (
 
 
 var (
-    version = "v0.7"
+    version = "v0.7.1"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -337,14 +337,12 @@ type Config struct {
     // Verify enables read-only liveness probes against provider endpoints
     // (Stripe /v1/balance, GitHub /user, OpenAI /v1/models, Slack auth.test, etc.).
     // VerifyTimeout bounds each probe; PerHost caps outbound concurrency per host.
-    // Stats prints per-stage counters at end of run; ShowSecrets toggles
-    // raw-value vs redacted-value console output (file output is always full).
+    // Stats prints per-stage counters at end of run.
     // RulesFile loads an external JSON rule pack at startup.
     Verify         bool
     VerifyTimeout  int
     PerHost        int
     Stats          bool
-    ShowSecrets    bool
     RulesFile      string
 
     // v0.6++: I/O formats, suppressions, registry introspection, deltas.
@@ -502,14 +500,13 @@ func Run() {
     flag.BoolVar(&allowInternal, "allow-internal", false, "Allow file://, localhost, and RFC1918 targets (off by default to prevent SSRF)")
 
     // v0.6+ — verifier, stats, extensibility
-    var verify, stats, showSecrets bool
+    var verify, stats bool
     var verifyTimeout, perHost int
     var rulesFile string
     flag.BoolVar(&verify, "verify", false, "Probe each finding against the provider's read-only endpoint (off by default; opt-in)")
     flag.IntVar(&verifyTimeout, "verify-timeout", 10, "Timeout in seconds for each verification probe")
     flag.IntVar(&perHost, "per-host", defaultPerHostConcurrency, "Per-host outbound concurrency cap (avoids getting banned)")
     flag.BoolVar(&stats, "stats", false, "Print per-stage counters (URLs fetched, FP-drops by reason, findings) on stderr at end of run")
-    flag.BoolVar(&showSecrets, "show-secrets", false, "Print full secret values to the console (default: redact in console; full value still goes to -o file)")
     flag.StringVar(&rulesFile, "rules-file", "", "Load an external JSON rule pack at startup (additive to built-in registry)")
 
     // v0.6++ — I/O formats, suppressions, deltas, registry introspection
@@ -643,7 +640,7 @@ func Run() {
         NoFPFilter: noFPFilter, SelfTest: selfTest,
         MaxBytes: maxBytes, AllowInternal: allowInternal,
         Verify: verify, VerifyTimeout: verifyTimeout, PerHost: perHost,
-        Stats: stats, ShowSecrets: showSecrets, RulesFile: rulesFile,
+        Stats: stats, RulesFile: rulesFile,
         SARIF: sarifOut, NDJSON: ndjsonOut,
         IgnoreFile: ignoreFile, DiffFile: diffFile,
         OnlyRules: onlyRules, DisableRule: disableRule,
@@ -1117,33 +1114,6 @@ func emitCSPOrigins(source string, origins []string) {
     }
 }
 
-// consoleRedact masks the secret portion of a `match` for console display
-// when --show-secrets is OFF. It tolerates the optional " [conf=X.XX]"
-// suffix (and the optional " VERIFIED" tag inside it) and only redacts the
-// secret prefix, so confidence/verification info still rides the line.
-//
-// File output paths bypass this — the operator who passed `-o` opted into
-// receiving the full value.
-func consoleRedact(match string, config *Config) string {
-    if config.ShowSecrets {
-        return match
-    }
-    // Find an optional confidence suffix.
-    suffix := ""
-    val := match
-    if idx := strings.LastIndex(match, " [conf="); idx >= 0 && strings.HasSuffix(match, "]") {
-        val = match[:idx]
-        suffix = match[idx:]
-    }
-    // Don't redact obvious URLs/links/emails — those aren't secrets.
-    if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") ||
-        strings.HasPrefix(val, "ws://") || strings.HasPrefix(val, "wss://") ||
-        strings.Contains(val, "@") {
-        return match
-    }
-    return redactValue(val) + suffix
-}
-
 // validateTargetURL refuses internal/loopback/private targets unless the user
 // explicitly opts in. Recon tools that follow links are SSRF-prone if they
 // blindly fetch any URL the input feeds them; this gate is the smallest
@@ -1257,7 +1227,6 @@ func customHelp() {
     fmt.Println("Detection Tuning:")
     fmt.Println("  -mc, --min-confidence FLOAT   Minimum confidence (0.0-1.0) for a finding (default: 0.50)")
     fmt.Println("  -sc, --show-confidence        Print [conf=X.XX] alongside each finding")
-    fmt.Println("       --show-secrets           Print full values to console (default: redact)")
     fmt.Println("       --no-fp-filter           Disable the false-positive filter (debug)")
     fmt.Println("       --ignore-file FILE       Permanent suppressions (.jshunterignore)")
     fmt.Println("       --diff PREVIOUS.json     Report only NEW findings vs previous JSON envelope")
@@ -2683,20 +2652,6 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
 
         resp, err := makeRequestWithRetry(client, req, config)
         if err != nil {
-            // Don't show errors in quiet mode
-            if !config.Quiet {
-                // Always show errors in verbose mode, or if not using proxy
-                if config.Verbose || config.Proxy == "" {
-                    if !isTLSCanceledError(err) {
-                        fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
-                    } else if config.Verbose {
-                        fmt.Printf("[%sINFO%s] TLS connection canceled (proxy interception): %s\n", colors["YELLOW"], colors["NC"], urlStr)
-                    }
-                } else if !isTLSCanceledError(err) {
-                    // Show non-TLS errors even without verbose mode
-                    fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
-                }
-            }
             return urlStr, nil
         }
         
@@ -4231,8 +4186,6 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
 
         for _, f := range registryFindings {
             label := f.Name
-            // matchesMap stores the FULL value for the -o file path; the
-            // console redaction layer below applies --show-secrets at print.
             display := f.Value
             if config.ShowConfidence {
                 tag := fmt.Sprintf(" [conf=%.2f", f.Confidence)
@@ -4513,12 +4466,7 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
                     key := name + ":" + match
                     if !globalSeenAll[key] {
                         globalSeenAll[key] = true
-                        // Console-only redaction: strip the [conf=...] suffix,
-                        // redact the value, then re-attach the suffix. The
-                        // matchesMap above still carries the full value for
-                        // file output paths.
-                        display := consoleRedact(match, config)
-                        fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], display)
+                        fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
                     }
                 }
             }
@@ -4860,19 +4808,7 @@ func extractEndpointsFromURLWithConfig(urlStr string, config *Config) []string {
     
     resp, err := makeRequestWithRetry(client, req, config)
     if err != nil {
-        // Don't show errors in quiet mode
-        if !config.Quiet {
-            if config.Verbose || config.Proxy == "" {
-                if !isTLSCanceledError(err) {
-                    fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
-                } else if config.Verbose {
-                    fmt.Printf("[%sINFO%s] TLS connection canceled (proxy interception): %s\n", colors["YELLOW"], colors["NC"], urlStr)
-                }
-            } else if !isTLSCanceledError(err) {
-                fmt.Printf("[%sERROR%s] Request failed for %s: %v\n", colors["RED"], colors["NC"], urlStr, err)
-            }
-        }
-        return nil 
+        return nil
     }
     
     if config.Verbose {
