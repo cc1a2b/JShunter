@@ -123,6 +123,14 @@ var vendorNoiseSubstr = []string{
 	"REPLACEME", "REPLACE_ME", "PLACEHOLDER", "XXXXXXXX",
 	"INSERT_KEY_HERE", "PUT_KEY_HERE", "ENTER_YOUR_KEY",
 	"my_secret_key", "test-secret-key",
+	"'password'", `"password"`, "'PASSWORD'", `"PASSWORD"`, "'Password'", `"Password"`,
+	"'passwd'", `"passwd"`, "'pwd'", `"pwd"`,
+	"'changeme'", `"changeme"`, "'CHANGEME'", `"CHANGEME"`,
+	"'admin'", `"admin"`, "'admin123'", `"admin123"`,
+	"'12345678'", `"12345678"`, "'123456789'", `"123456789"`,
+	"'qwerty'", `"qwerty"`, "'qwerty123'", `"qwerty123"`,
+	"'letmein'", `"letmein"`, "'test123'", `"test123"`,
+	"'secret'", `"secret"`, "'default'", `"default"`,
 }
 
 // Surrounding-context tokens that lower the score (looks like a fixture/sample).

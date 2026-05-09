@@ -27,7 +27,7 @@ import (
 
 
 var (
-    version = "v0.7.2"
+    version = "v0.7.3"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -63,7 +63,7 @@ var (
     "Authorization Api":             regexp.MustCompile(`(?i)\bapi[_-]?key\s*[:=]\s*["']?[a-zA-Z0-9_\-]{20,100}["']?`),
 	"Twilio Api Key":                regexp.MustCompile(`SK[0-9a-fA-F]{32}`),
 	"Twilio Account Sid":            regexp.MustCompile(`(?i)\b(?:twilio|tw)\s*[_-]?account[_-]?sid\s*[:=]\s*["']?AC[a-zA-Z0-9_\-]{32}["']?`),
-	"Twilio App Sid":                regexp.MustCompile(`AP[a-zA-Z0-9_\-]{32}`),
+	"Twilio App Sid":                regexp.MustCompile(`\bAP[a-fA-F0-9]{32}\b`),
 	"Paypal Braintre Access Token":  regexp.MustCompile(`access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}`),
 	"Square Oauth Secret":           regexp.MustCompile(`sq0csp-[0-9A-Za-z\-_]{43}|sq0[a-z]{3}-[0-9A-Za-z\-_]{22,43}`),
 	"Square Access Token":           regexp.MustCompile(`sqOatp-[0-9A-Za-z\-_]{22}`),
@@ -138,7 +138,7 @@ var (
 	"Segment Write Key":             regexp.MustCompile(`(?i)\b(?:segment[_-]?)?writeKey\s*[:=]\s*["']?[A-Za-z0-9]{32}["']?`),
 	"Tiktok Access Token":           regexp.MustCompile(`\btiktok_access_token=[a-zA-Z0-9_]{20,}\b`),
 	"Slack Client Secret":           regexp.MustCompile(`xoxs-[0-9]{1,9}.[0-9A-Za-z]{1,12}.[0-9A-Za-z]{24,64}`),
-    "Phone Number":                  regexp.MustCompile(`(?:^|[^\d])\+\d{9,14}(?:[^\d]|$)`),
+    "Phone Number":                  regexp.MustCompile(`(?:^|[\s"'<>:,;(\[])\+\d{9,14}(?:[\s"'<>,;.!?)\]]|$)`),
     "Email":                         regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`),
 	"Ali Cloud Access Key":		     regexp.MustCompile(`\bLTAI[A-Za-z0-9]{12,20}\b`),
 	"Tencent Cloud Access Key":	     regexp.MustCompile(`\bAKID[A-Za-z0-9]{13,20}\b`),
