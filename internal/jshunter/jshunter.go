@@ -27,7 +27,7 @@ import (
 
 
 var (
-    version = "v0.7.1"
+    version = "v0.7.2"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -90,7 +90,7 @@ var (
 	"Ssh Priv Key":                  regexp.MustCompile(`([-]+BEGIN [^\s]+ PRIVATE KEY[-]+[\s]*[^-]*[-]+END [^\s]+ PRIVATE KEY[-]+)`),
 	"Slack Webhook Url":             regexp.MustCompile(`https://hooks.slack.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`),
 	"Heroku Api Key 2":              regexp.MustCompile(`(?i)\bheroku[_-]?(?:api[_-]?)?key\s*[:=]\s*["']?[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}["']?`),
-	"Dropbox Access Token":          regexp.MustCompile(`(?i)\bsl\.[A-Za-z0-9_-]{16,50}\b`),
+	"Dropbox Access Token":          regexp.MustCompile(`\bsl\.[A-Za-z0-9_-]{64,200}\b`),
 	"Salesforce Access Token":       regexp.MustCompile(`00D[0-9A-Za-z]{15,18}![A-Za-z0-9]{40}`),
 	"Twitter Bearer Token":          regexp.MustCompile(`\bAAAAAAAAAAAAAAAAAAAAA[A-Za-z0-9%]{30,80}\b`),
 	"Firebase Url":                  regexp.MustCompile(`https://[a-z0-9-]+\.firebaseio\.com`),
@@ -4454,18 +4454,18 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
             // Per-source console output is suppressed; structured output
             // is emitted exactly once at end of run via emitFinalOutput.
         } else {
-            // Show FOUND message (unless quiet mode)
-            if !config.Quiet {
-                fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
-            }
-            // Global deduplication across all files
             globalSeenMutex.Lock()
-            globalFoundAny = true // Mark that we found something
+            globalFoundAny = true
+            headerPrinted := false
             for name, matches := range matchesMap {
                 for _, match := range matches {
                     key := name + ":" + match
                     if !globalSeenAll[key] {
                         globalSeenAll[key] = true
+                        if !headerPrinted && !config.Quiet {
+                            fmt.Printf("[%s FOUND %s] Sensitive data at: %s\n", colors["RED"], colors["NC"], source)
+                            headerPrinted = true
+                        }
                         fmt.Printf("Sensitive Data [%s%s%s]: %s\n", colors["YELLOW"], name, colors["NC"], match)
                     }
                 }
