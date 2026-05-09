@@ -18,7 +18,7 @@
 
 **JSHunter** is a comprehensive command-line tool for JavaScript security analysis and endpoint discovery. Built for security professionals, penetration testers, and developers, it delivers enterprise-grade analysis capabilities with high accuracy detection algorithms and professional reporting features.
 
-> **v0.6 — surgical false-positive reduction.** Every secret-class match now flows through a confidence-scoring pipeline (entropy gate, character-class diversity, vendor-noise denylist, fixture-context penalty, sourcemap-line skip) before it is reported. Highest-volume providers (AWS, Stripe, GitHub, OpenAI, Slack, JWT) get format-and-checksum validators. Output is `schema_version: 2` JSON with per-finding `confidence` and `reasons`. Run `jshunter --self-test` to exercise the rule registry against its built-in TP/FP fixtures.
+> **Surgical false-positive reduction.** Every secret-class match flows through a confidence-scoring pipeline (entropy gate, character-class diversity, vendor-noise denylist, fixture-context penalty, sourcemap-line skip) before it is reported. Highest-volume providers (AWS, Stripe, GitHub, OpenAI, Slack, JWT) get format-and-checksum validators. Live verification is opt-in via `--verify`. Page-aware crawling, source-map analysis, HAR ingestion, and on-disk response cache are first-class. Output is JSON (`schema_version: 2`), NDJSON, SARIF 2.1.0, CSV, or Burp-compatible. Run `jshunter --self-test` to exercise the rule registry against its built-in TP/FP fixtures.
 
 <div align="center">
 <img alt="JSHunter Demo Screenshot" src="https://github.com/user-attachments/assets/f0197c36-c40b-48e9-bec5-c306acd4a613" width="100%">
@@ -269,69 +269,93 @@ Get the complete help anytime with `jshunter --help`
 
 ```
 Usage:
-  -u, --url URL                 Input a URL
-  -l, --list FILE.txt           Input a file with URLs (.txt)
-  -f, --file FILE.js            Path to JavaScript file
+  -u,  --url URL                Input a URL
+  -l,  --list FILE.txt          Input a file with URLs (.txt)
+  -f,  --file FILE.js           Path to JavaScript file
+       --har FILE               Ingest a Chrome DevTools HAR archive
 
 Basic Options:
-  -t, --threads INT             Number of concurrent threads (default: 5)
-  -c, --cookies <cookies>      Authentication cookies for protected resources
-  -p, --proxy host:port        Proxy configuration (HTTP/HTTPS/SOCKS5, e.g., 127.0.0.1:8080 or socks5://127.0.0.1:1080)
-  -q, --quiet                  Suppress ASCII art output
-  -o, --output FILENAME.txt    Output file path
-  -r, --regex <pattern>        RegEx for filtering results (endpoints and sensitive data)
-  --update, --up               Update the tool to latest version
-  -ep, --end-point             Extract endpoints from JavaScript files
-  -k, --skip-tls               Skip TLS certificate verification
-  -fo, --found-only            Only show results when sensitive data is found (hide MISSING messages)
+  -t,  --threads INT            Number of concurrent threads (default: 5)
+  -c,  --cookies <cookies>      Authentication cookies for protected resources
+  -p,  --proxy host:port        HTTP/SOCKS5 proxy (e.g., 127.0.0.1:8080 for Burp Suite)
+  -q,  --quiet                  Suppress ASCII art output
+       --no-color               Disable ANSI color (auto-off when not a TTY)
+  -o,  --output FILENAME        Output file path
+  -r,  --regex <pattern>        RegEx for filtering results
+       --update, --up           Update the tool to latest version
+  -ep, --end-point              Extract endpoints from JavaScript files
+  -k,  --skip-tls               Skip TLS certificate verification
+  -fo, --found-only             Only show results when sensitive data is found
 
 HTTP Configuration:
-  -H, --header "Key: Value"    Custom HTTP headers (repeatable, including Auth)
-  -U, --user-agent UA          Custom User-Agent string or file path (one per line)
-  -R, --rate-limit MS          Request rate limiting delay (milliseconds)
-  -T, --timeout SEC            HTTP request timeout (seconds)
-  -y, --retry INT              Retry attempts for failed requests (default: 2)
+  -H,  --header "Key: Value"    Custom HTTP headers (repeatable, including Auth)
+  -U,  --user-agent UA          Custom User-Agent string or file path
+  -R,  --rate-limit MS          Request rate limiting delay (milliseconds)
+  -T,  --timeout SEC            HTTP request timeout (seconds)
+  -y,  --retry INT              Retry attempts for failed requests (default: 2)
+       --per-host INT           Per-host outbound concurrency cap (default: 4)
+       --max-bytes N            Cap response body read in bytes (default: 32MiB)
+       --allow-internal         Permit localhost / RFC1918 / link-local targets
+       --cache-dir DIR          Persist responses on disk; revalidate via ETag
 
 JavaScript Analysis:
-  -d, --deobfuscate            Deobfuscate minified and obfuscated JavaScript
-  -m, --sourcemap              Parse source maps for original code analysis
-  -e, --eval                   Analyze dynamic code execution (eval, Function)
-  -z, --obfs-detect            Detect code obfuscation patterns and techniques
+  -d,  --deobfuscate            Deobfuscate minified and obfuscated JavaScript
+  -m,  --sourcemap              Fetch and parse source maps + sourcesContent[]
+  -e,  --eval                   Analyze dynamic code execution (eval, Function)
+  -z,  --obfs-detect            Detect code obfuscation patterns and techniques
+       --inline-html            Scan inline <script> tags + SRI/CSP in HTML responses
+       --csp-origins            Emit CSP-allowed origins as candidate endpoints
 
 Security Analysis:
-  -s, --secrets                Detect API keys, tokens, and credentials
-  -x, --tokens                 Extract JWT and authentication tokens
-  -P, --params                 Discover hidden parameters and variables
-  -PU, --param-urls            Advanced parameter extraction with URL context
-  -i, --internal               Filter for internal/private endpoints
-  -g, --graphql                Analyze GraphQL endpoints and queries
-  -B, --bypass                 Detect WAF bypass patterns and techniques
-  -F, --firebase               Analyze Firebase configurations and keys
-  -L, --links                  Extract and analyze all embedded links
+  -s,  --secrets                Detect API keys, tokens, and credentials
+  -x,  --tokens                 Extract JWT and authentication tokens
+  -P,  --params                 Discover hidden parameters and variables
+  -PU, --param-urls             Advanced parameter extraction with URL context
+  -i,  --internal               Filter for internal/private endpoints
+  -g,  --graphql                Analyze GraphQL endpoints and queries
+  -B,  --bypass                 Detect WAF bypass patterns and techniques
+  -F,  --firebase               Analyze Firebase configurations and keys
+  -L,  --links                  Extract and analyze all embedded links
+
+Detection Tuning:
+  -mc, --min-confidence FLOAT   Minimum confidence (0.0-1.0) for a finding (default: 0.50)
+  -sc, --show-confidence        Print [conf=X.XX] alongside each finding
+       --no-fp-filter           Disable the false-positive filter (debug)
+       --ignore-file FILE       Permanent suppressions (.jshunterignore)
+       --diff PREVIOUS.json     Report only NEW findings vs previous JSON envelope
+       --rules-file FILE.json   Load an external JSON rule pack
+       --only-rules id,glob     Run only matching rules (supports * glob)
+       --disable-rule id,glob   Disable matching rules (supports * glob)
+
+Verification:
+       --verify                 Probe findings against provider read-only endpoints
+       --verify-timeout SEC     Timeout per verification probe (default: 10)
+       --verify-workers INT     Concurrent verifier worker pool (default: 8)
 
 Scope & Discovery:
-  -w, --crawl DEPTH            Recursive JavaScript discovery depth (default: 1)
-  -D, --domain DOMAIN          Limit analysis to specific domain
-  -E, --ext                    Filter by JavaScript file extensions
+  -w,  --crawl DEPTH            Recursive JavaScript discovery depth (default: 1)
+  -D,  --domain DOMAIN          Limit analysis to specific domain
+  -E,  --ext                    Filter by JavaScript file extensions
+       --robots                 Fetch /robots.txt for each input host and exit
 
 Output Formats:
-  -j, --json                   Structured JSON output format (schema_version 2)
-  -C, --csv                    CSV format for spreadsheet analysis
-  -v, --verbose                Detailed analysis and debug output
-  -n, --burp                   Burp Suite compatible export format
+  -j,  --json                   Structured JSON output (schema_version 2)
+       --ndjson                 Newline-delimited JSON (jq / SIEM streaming)
+       --sarif                  SARIF 2.1.0 (GitHub code-scanning compatible)
+  -C,  --csv                    CSV format for spreadsheet analysis
+  -v,  --verbose                Detailed analysis and debug output
+  -n,  --burp                   Burp Suite compatible export format
+       --stats                  Per-stage counters on stderr at end of run
 
-False-Positive Pipeline (v0.6):
-  -mc,  --min-confidence FLOAT Minimum confidence (0.0-1.0) for a finding (default 0.50)
-  -sc,  --show-confidence      Print [conf=X.XX] alongside each finding
-        --no-fp-filter         Disable the FP filter (debug; keeps every match)
-        --self-test            Run rule registry against built-in TP/FP fixtures
-        --max-bytes N          Cap response body read in bytes (default 32MiB)
-        --allow-internal       Permit file://, localhost, and RFC1918 targets
+Registry:
+       --list-rules             Print the rule registry as a table and exit
+       --explain RULE_ID        Print full rule details and exit
+       --self-test              Run rule registry against built-in TP/FP fixtures
 
-  -h, --help                   Display this help message
+  -h,  --help                   Display this help message
 ```
 
-### v0.6 confidence model
+### Confidence model
 
 Every secret-class match is scored in `[0.0, 1.0]`. The score starts from a per-rule prior and is adjusted by:
 
@@ -347,7 +371,7 @@ Every secret-class match is scored in `[0.0, 1.0]`. The score starts from a per-
 | Length / entropy below rule floor              | dropped before scoring       |
 | Line is a `//# sourceMappingURL=` marker       | dropped before scoring       |
 
-The default `--min-confidence 0.50` filters out the long tail of pattern-only matches. Use `--min-confidence 0.80` for high-precision triage, `--no-fp-filter` for raw v0.5-compatible output.
+The default `--min-confidence 0.50` filters out the long tail of pattern-only matches. Use `--min-confidence 0.80` for high-precision triage, `--no-fp-filter` for raw, unfiltered output.
 
 ### Provider validators
 
