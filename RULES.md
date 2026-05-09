@@ -6,7 +6,7 @@ in `detection.go`) and **external rule packs** loaded at runtime via
 must meet to ship.
 
 ## Mental model
-
+ 
 ```
 fetch  →  parse  →  rule match  →  scoreFinding  →  recordFinding  →  output
                                        │
