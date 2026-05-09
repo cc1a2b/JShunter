@@ -382,7 +382,7 @@ or had escape errors. v0.6 corrects them:
   passed. The intent is making JSHunter safe to run against
   user-supplied URL lists.
 - Response body reads are now bounded by `--max-bytes` via
-  `io.LimitReader`.
+  `io.LimitReader`. 
 
 ## [v0.5] — 2026-01-22
 
