@@ -18,8 +18,6 @@
 
 **JSHunter** is a comprehensive command-line tool for JavaScript security analysis and endpoint discovery. Built for security professionals, penetration testers, and developers, it delivers enterprise-grade analysis capabilities with high accuracy detection algorithms and professional reporting features.
 
-> **Surgical false-positive reduction.** Every secret-class match flows through a confidence-scoring pipeline (entropy gate, character-class diversity, vendor-noise denylist, fixture-context penalty, sourcemap-line skip) before it is reported. Highest-volume providers (AWS, Stripe, GitHub, OpenAI, Slack, JWT) get format-and-checksum validators. Live verification is opt-in via `--verify`. Page-aware crawling, source-map analysis, HAR ingestion, and on-disk response cache are first-class. Output is JSON (`schema_version: 2`), NDJSON, SARIF 2.1.0, CSV, or Burp-compatible. Run `jshunter --self-test` to exercise the rule registry against its built-in TP/FP fixtures.
-
 <div align="center">
 <img alt="JSHunter Demo Screenshot" src="https://github.com/user-attachments/assets/f0197c36-c40b-48e9-bec5-c306acd4a613" width="100%">
 
