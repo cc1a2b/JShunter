@@ -8,13 +8,13 @@
 [![GitHub stars](https://img.shields.io/github/stars/cc1a2b/jshunter)](https://github.com/cc1a2b/jshunter/stargazers)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/cc1a2b/jshunter/releases)
 
-**🔍 Professional JavaScript Security Analysis Tool**
+**Professional JavaScript Security Analysis Tool**
 
 *Complete endpoint discovery, sensitive data detection, and advanced code analysis for security professionals*
 
 </div>
 
-## 📖 About
+## About
 
 **JSHunter** is a comprehensive command-line tool for JavaScript security analysis and endpoint discovery. Built for security professionals, penetration testers, and developers, it delivers enterprise-grade analysis capabilities with high accuracy detection algorithms and professional reporting features.
 
@@ -26,144 +26,144 @@
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [About](#-about)
-- [Features](#-features)
-- [Installation](#-installation)  
-- [Quick Start](#-quick-start)
-- [Usage Examples](#-usage-examples)
-- [Command Reference](#-command-reference)
-- [Advanced Usage](#-advanced-usage)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Support](#-support)
+- [About](#about)
+- [Features](#features)
+- [Installation](#installation)  
+- [Quick Start](#quick-start)
+- [Usage Examples](#usage-examples)
+- [Command Reference](#command-reference)
+- [Advanced Usage](#advanced-usage)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
 
 ---
 
-## ✨ Features
+## Features
 
-### 🎯 Core Capabilities
-- **🔍 Comprehensive Endpoint Discovery**: Automatically extracts URLs, API endpoints, and hidden parameters from JavaScript files
-- **🔐 Advanced Security Analysis**: Identifies API keys, JWT tokens, credentials, and potential vulnerabilities with high accuracy  
-- **📥 Flexible Input Methods**: Supports URLs, file lists, local files, stdin piping, and recursive discovery
-- **⚡ High-Performance Architecture**: Multi-threaded concurrent processing with intelligent rate limiting
-- **🎭 Professional Stealth Features**: Proxy support, custom headers, user-agent rotation, and bypass detection
+### Core Capabilities
+- **Comprehensive Endpoint Discovery**: Automatically extracts URLs, API endpoints, and hidden parameters from JavaScript files
+- **Advanced Security Analysis**: Identifies API keys, JWT tokens, credentials, and potential vulnerabilities with high accuracy
+- **Flexible Input Methods**: Supports URLs, file lists, local files, stdin piping, and recursive discovery
+- **High-Performance Architecture**: Multi-threaded concurrent processing with intelligent rate limiting
+- **Professional Stealth Features**: Proxy support, custom headers, user-agent rotation, and bypass detection
 
-### 🎯 Intelligent Detection Engine
+### Intelligent Detection Engine
 > **Enterprise-grade accuracy with advanced analysis algorithms**
 
-- **🎯 Smart Base64 Detection**: High-accuracy filtering eliminates false positives from media content and encoded data
-- **🏢 Professional Interface**: Enterprise-ready terminology, documentation, and comprehensive reporting formats
-- **🧠 Context-Aware Analysis**: Advanced algorithms distinguish real security tokens from encoded media data
-- **📊 Entropy Analysis**: Mathematical algorithms identify genuine security tokens and credentials with precision
+- **Smart Base64 Detection**: High-accuracy filtering eliminates false positives from media content and encoded data
+- **Professional Interface**: Enterprise-ready terminology, documentation, and comprehensive reporting formats
+- **Context-Aware Analysis**: Advanced algorithms distinguish real security tokens from encoded media data
+- **Entropy Analysis**: Mathematical algorithms identify genuine security tokens and credentials with precision
 
-### 🌐 Professional HTTP & Networking Suite
+### Professional HTTP & Networking Suite
 <details>
 <summary><strong>Enterprise-Grade Network Configuration</strong></summary>
 
 **Authentication & Headers:**
-- **🔧 Custom Headers** (`-H`): Repeatable authentication headers and custom request headers
-- **🍪 Cookie Management** (`-c`): Session cookies for accessing protected resources
-- **🎭 User-Agent Control** (`-U`): Custom UA strings or file-based rotation for stealth
+- **Custom Headers** (`-H`): Repeatable authentication headers and custom request headers
+- **Cookie Management** (`-c`): Session cookies for accessing protected resources
+- **User-Agent Control** (`-U`): Custom UA strings or file-based rotation for stealth
 
 **Performance & Reliability:**
-- **⏱️ Rate Limiting** (`-R`): Configurable request delays (milliseconds) to avoid detection
-- **⏰ Smart Timeouts** (`-T`): Custom timeout settings for different network conditions
-- **🔄 Intelligent Retry** (`-y`): Automatic retry mechanism with exponential backoff for failed requests
+- **Rate Limiting** (`-R`): Configurable request delays (milliseconds) to avoid detection
+- **Smart Timeouts** (`-T`): Custom timeout settings for different network conditions
+- **Intelligent Retry** (`-y`): Automatic retry mechanism with exponential backoff for failed requests
 
 **Professional Integration:**
-- **🔗 Proxy Support** (`-p`): Full Burp Suite and custom proxy integration (HTTP/HTTPS/SOCKS5)
-- **🔒 TLS Flexibility** (`-k`): Optional certificate verification bypass for testing environments
-- **🎯 Thread Control** (`-t`): Configurable concurrent request handling for optimal performance
+- **Proxy Support** (`-p`): Full Burp Suite and custom proxy integration (HTTP/HTTPS/SOCKS5)
+- **TLS Flexibility** (`-k`): Optional certificate verification bypass for testing environments
+- **Thread Control** (`-t`): Configurable concurrent request handling for optimal performance
 
-> **🔒 Security Professional Features**: Designed for penetration testing and security assessments  
+> **Security Professional Features**: Designed for penetration testing and security assessments
 > **Example**: `jshunter -l targets.txt -p 127.0.0.1:8080 -H "Authorization: Bearer token" -R 1000`
 
 </details>
 
-### 📝 Advanced JavaScript Analysis
+### Advanced JavaScript Analysis
 <details>
 <summary><strong>Complete Code Analysis & Deobfuscation Suite</strong></summary>
 
 **Core Analysis Tools:**
-- **🧩 Deobfuscation Engine** (`-d`): Unpacks minified and obfuscated JavaScript for deep analysis
-- **🗺️ Source Map Parser** (`-m`): Extracts and analyzes original source code from source maps
-- **🔍 Obfuscation Detection** (`-z`): Identifies and classifies obfuscation techniques and patterns
+- **Deobfuscation Engine** (`-d`): Unpacks minified and obfuscated JavaScript for deep analysis
+- **Source Map Parser** (`-m`): Extracts and analyzes original source code from source maps
+- **Obfuscation Detection** (`-z`): Identifies and classifies obfuscation techniques and patterns
 
 **Dynamic Analysis:**
-- **⚡ Eval Analysis** (`-e`): Analyzes dynamic code execution (`eval()`, `Function()`, runtime generation)
+- **Eval Analysis** (`-e`): Analyzes dynamic code execution (`eval()`, `Function()`, runtime generation)
 
 **Code Intelligence:**
-- **🔍 Pattern Recognition**: Identifies common JavaScript frameworks and libraries
-- **📊 Code Structure Analysis**: Maps application architecture and data flows
-- **🎯 Context-Aware Detection**: Understands code context to reduce false positives
+- **Pattern Recognition**: Identifies common JavaScript frameworks and libraries
+- **Code Structure Analysis**: Maps application architecture and data flows
+- **Context-Aware Detection**: Understands code context to reduce false positives
 
-> **💡 Professional Usage**: Combine analysis tools with security detection for maximum coverage  
+> **Professional Usage**: Combine analysis tools with security detection for maximum coverage
 > **Example**: `jshunter -u target.js -d -m -e -s -g` (full deobfuscation + security analysis)
 
 </details>
 
-### 🔐 Security Analysis Suite
+### Security Analysis Suite
 <details>
 <summary><strong>Complete Security Assessment Toolkit</strong></summary>
 
 **Core Security Detection:**
-- **🔑 Secrets Detection** (`-s`): API keys, access tokens, passwords, and hardcoded credentials
-- **🎫 JWT Token Analysis** (`-x`): Authentication token extraction, validation, and payload inspection
-- **🔥 Firebase Security** (`-F`): Configuration analysis, API keys, and database URL detection
+- **Secrets Detection** (`-s`): API keys, access tokens, passwords, and hardcoded credentials
+- **JWT Token Analysis** (`-x`): Authentication token extraction, validation, and payload inspection
+- **Firebase Security** (`-F`): Configuration analysis, API keys, and database URL detection
 
 **Advanced Analysis:**
-- **📋 Parameter Discovery** (`-P`): Hidden form parameters, variables, and configuration keys
-- **🔗 URL Parameter Extraction** (`-PU`): Advanced parameter analysis with full URL context
-- **📊 GraphQL Analysis** (`-g`): Schema detection, query extraction, and endpoint discovery
-- **🛡️ WAF Bypass Detection** (`-B`): Security bypass patterns and evasion techniques
+- **Parameter Discovery** (`-P`): Hidden form parameters, variables, and configuration keys
+- **URL Parameter Extraction** (`-PU`): Advanced parameter analysis with full URL context
+- **GraphQL Analysis** (`-g`): Schema detection, query extraction, and endpoint discovery
+- **WAF Bypass Detection** (`-B`): Security bypass patterns and evasion techniques
 
 **Scope & Context:**
-- **🏠 Internal Endpoint Filtering** (`-i`): Private/internal resource identification and classification
-- **🌐 Link Analysis** (`-L`): Comprehensive URL extraction and relationship mapping
+- **Internal Endpoint Filtering** (`-i`): Private/internal resource identification and classification
+- **Link Analysis** (`-L`): Comprehensive URL extraction and relationship mapping
 
-> **🎯 Professional Tip**: Combine flags for comprehensive analysis (e.g., `jshunter -u target.js -s -x -F -g`)
+> **Professional Tip**: Combine flags for comprehensive analysis (e.g., `jshunter -u target.js -s -x -F -g`)
 
 </details>
 
-### 🎯 Scope & Discovery
+### Scope & Discovery
 <details>
 <summary><strong>Intelligent Crawling & Targeting</strong></summary>
 
-- **🔍 Recursive Discovery**: Multi-depth JavaScript file crawling
-- **🌍 Domain Scoping**: Focus analysis on specific domains
-- **📂 Extension Filtering**: Target specific JavaScript file types
+- **Recursive Discovery**: Multi-depth JavaScript file crawling
+- **Domain Scoping**: Focus analysis on specific domains
+- **Extension Filtering**: Target specific JavaScript file types
 
 </details>
 
-### 📤 Professional Reporting & Export Suite
+### Professional Reporting & Export Suite
 <details>
 <summary><strong>Enterprise-Grade Output & Integration</strong></summary>
 
 **Core Output Formats:**
-- **🖥️ Console Display**: Color-coded terminal output with professional formatting and clear categorization
-- **📄 File Export** (`-o`): Save comprehensive results to custom file locations
-- **📊 JSON Export** (`-j`): Structured data format for automation and programmatic processing
-- **📈 CSV Export** (`-C`): Spreadsheet-compatible format for executive reporting and analysis
+- **Console Display**: Color-coded terminal output with professional formatting and clear categorization
+- **File Export** (`-o`): Save comprehensive results to custom file locations
+- **JSON Export** (`-j`): Structured data format for automation and programmatic processing
+- **CSV Export** (`-C`): Spreadsheet-compatible format for executive reporting and analysis
 
 **Professional Integration:**
-- **🔴 Burp Suite Export** (`-n`): Direct integration with Burp Suite Professional for immediate testing
-- **🎯 Regex Filtering** (`-r`): Custom pattern matching for targeted result filtering
-- **🔍 Verbose Analysis** (`-v`): Detailed analysis output with debugging information and context
+- **Burp Suite Export** (`-n`): Direct integration with Burp Suite Professional for immediate testing
+- **Regex Filtering** (`-r`): Custom pattern matching for targeted result filtering
+- **Verbose Analysis** (`-v`): Detailed analysis output with debugging information and context
 
 **Result Management:**
-- **✨ Clean Mode** (`--found-only`): Hide empty results for focused security reporting
-- **🤫 Quiet Mode** (`-q`): Suppress banner for automated scripting and CI/CD integration
+- **Clean Mode** (`--found-only`): Hide empty results for focused security reporting
+- **Quiet Mode** (`-q`): Suppress banner for automated scripting and CI/CD integration
 
-> **📋 Reporting Workflow**: Use JSON for automation, CSV for management reports, Burp export for immediate testing  
+> **Reporting Workflow**: Use JSON for automation, CSV for management reports, Burp export for immediate testing
 > **Example**: `jshunter -l targets.txt -s -j -o security-findings.json` (structured security report)
 
 </details>
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### Go Install (Recommended)
 ```bash
@@ -188,7 +188,7 @@ go build -o jshunter ./cmd/jshunter
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Basic Analysis
 ```bash
@@ -219,7 +219,7 @@ jshunter -l targets.txt -s -g -F -j -o security_findings.json
 
 ---
 
-## 💡 Usage Examples
+## Usage Examples
 
 ```bash
 # Analyze single URL
@@ -261,7 +261,7 @@ jshunter -f obfuscated.js -d -z -e -s -v
 
 ---
 
-## 📋 Command Reference
+## Command Reference
 
 Get the complete help anytime with `jshunter --help`
 
@@ -385,7 +385,7 @@ The default `--min-confidence 0.50` filters out the long tail of pattern-only ma
 
 ---
 
-## 🔧 Advanced Usage
+## Advanced Usage
 
 ### Professional Security Assessment
 ```bash
@@ -422,14 +422,14 @@ jshunter -l targets.txt -g -F -L -j -o api_security_findings.json
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Here's how you can help:
 
-- **🐛 Report bugs** via [GitHub Issues](https://github.com/cc1a2b/jshunter/issues)
-- **💡 Suggest features** or improvements
-- **📝 Improve documentation** 
-- **🔧 Submit pull requests** with enhancements
+- **Report bugs** via [GitHub Issues](https://github.com/cc1a2b/jshunter/issues)
+- **Suggest features** or improvements
+- **Improve documentation**
+- **Submit pull requests** with enhancements
 
 ### Development Setup
 ```bash
@@ -441,7 +441,7 @@ go build -o jshunter ./cmd/jshunter
 
 ---
 
-## 📄 License
+## License
 
 JSHunter is released under the **MIT License**. See [LICENSE](https://github.com/cc1a2b/jshunter/blob/master/LICENSE) for details.
 
@@ -458,7 +458,7 @@ If JSHunter helps with your security research or professional work:
 
 <div align="center">
 
-**⭐ Star this repo** • **🐦 Follow [@cc1a2b](https://twitter.com/cc1a2b)** • **📢 Share with others**
+**Star this repo** • **Follow [@cc1a2b](https://twitter.com/cc1a2b)** • **Share with others**
 
 </div>
 
@@ -466,8 +466,8 @@ If JSHunter helps with your security research or professional work:
 
 <div align="center">
 
-**🔍 JSHunter - Professional JavaScript Security Analysis**
+**JSHunter - Professional JavaScript Security Analysis**
 
-*Built with ❤️ by [cc1a2b](https://github.com/cc1a2b) for the security community*
+*Built with by [cc1a2b](https://github.com/cc1a2b) for the security community*
 
 </div>
