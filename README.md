@@ -458,8 +458,6 @@ If JSHunter helps with your security research or professional work:
 
 <div align="center">
 
-[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/default-orange.png)](https://www.buymeacoffee.com/cc1a2b)
-
 **⭐ Star this repo** • **🐦 Follow [@cc1a2b](https://twitter.com/cc1a2b)** • **📢 Share with others**
 
 </div>
