@@ -468,6 +468,6 @@ If JSHunter helps with your security research or professional work:
 
 **JSHunter - Professional JavaScript Security Analysis**
 
-*Built with by [cc1a2b](https://github.com/cc1a2b) for the security community*
+*Built by [cc1a2b](https://github.com/cc1a2b) for the security community*
 
 </div>
