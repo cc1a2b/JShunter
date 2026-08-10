@@ -18,11 +18,9 @@
 
 **JSHunter** is a comprehensive command-line tool for JavaScript security analysis and endpoint discovery. Built for security professionals, penetration testers, and developers, it delivers enterprise-grade analysis capabilities with high accuracy detection algorithms and professional reporting features.
 
-<div align="center">
-<img alt="JSHunter Demo Screenshot" src="https://github.com/user-attachments/assets/f0197c36-c40b-48e9-bec5-c306acd4a613" width="100%">
+https://github.com/user-attachments/assets/5a5f60fa-f8dc-4aac-bd06-2e93779f9af4
 
-*JSHunter in action - Professional JavaScript security analysis*
-</div>
+*JSHunter in action — a real terminal capture of the CLI (every secret shown is fake test data)*
 
 ---
 
