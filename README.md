@@ -371,15 +371,46 @@ The default `--min-confidence 0.50` filters out the long tail of pattern-only ma
 
 ### Provider validators
 
+A validator is a per-rule consistency check that runs *after* the regex matches.
+It is the strongest defence against false positives: a random string that happens
+to fit the shape still has to survive a checksum, a structural decode, or a
+length/charset proof before it is reported (and passing one adds `+0.10`).
+
 | Provider | Validator                                                                |
 |----------|--------------------------------------------------------------------------|
-| AWS      | Prefix family (`AKIA/ASIA/A3T…`) + 16-char base32 body                   |
-| Stripe   | Prefix family (`sk/rk/pk_live/test_`) + clean base62 body                |
+| AWS      | Prefix family (`AKIA/ASIA/A3T…`) + 16-char base32 body                    |
+| Stripe   | Key family (`sk/rk/pk_live/test_`) and `whsec_` webhook base62 body       |
 | GitHub   | CRC32 base62 checksum verified against random body                        |
 | OpenAI   | Family prefix + length window (`sk-/sk-proj-/sk-svcacct-`)                |
-| Slack    | Hyphen-segment shape (numeric inner segments, alphanumeric tail)         |
-| JWT      | base64url-decoded JSON header with `alg` field + JSON payload            |
-| Twilio   | 32-hex body + entropy gate                                               |
+| Slack    | Hyphen-segment shape (numeric inner segments, alphanumeric tail)          |
+| JWT      | base64url-decoded JSON header with `alg` field + JSON payload             |
+| Twilio   | 32-hex body + entropy gate                                                |
+| Azure    | `AccountKey=` base64 body decodes to exactly 64 bytes; AD `…<digit>Q~…`   |
+| Telegram | `<8-10 digit id>:AA…` split, base64url secret + entropy gate              |
+| Intercom | base64 decodes to a `tok:`-prefixed payload                              |
+| Sentry   | `sntrys_` org token payload base64-decodes to JSON carrying a `url` claim |
+| Terraform| `<14>.atlasv1.<60-70>` three-segment structure                           |
+| Square   | `sq0atp-/sq0csp-/sq0idp-` family + exact body length + entropy           |
+| Braintree| `access_token$<env>$<16 base36>$<32 hex>` four-segment structure          |
+| Airtable | `pat<14>.<64 hex>` two-segment split                                      |
+| Postman  | `PMAK-<24 hex>-<34 hex>` segment lengths + entropy                        |
+| Database | connection-URI password rejected if templated/default/low-entropy        |
+
+### Provider coverage
+
+The curated registry ships **85+ detectors** spanning cloud & secret managers
+(AWS, Azure, GCP/PKCS#8, HashiCorp Vault, Terraform, Fly.io, Tailscale), version
+control & CI/CD (GitHub, GitLab, Docker Hub, Atlassian, Sentry, CircleCI,
+Buildkite), payments (Stripe, Square, Braintree, Plaid), AI/LLM providers
+(OpenAI, Anthropic, Groq, Perplexity, Replicate, OpenRouter, Fireworks,
+HuggingFace), messaging (Slack, Discord, Telegram, Twilio, Intercom, SendGrid,
+Mailgun), SaaS & databases (Notion, Airtable, Figma, Postman, Databricks,
+PlanetScale, Grafana, New Relic, Dropbox, RubyGems, Supabase), and PKI material
+(RSA/EC/DSA/OpenSSH/PGP/PKCS#8 private keys, PuTTY `.ppk`, database connection
+URIs). Run `jshunter --list-rules` for the authoritative table and
+`jshunter --explain <rule_id>` for any single rule's pattern, validator, and
+fixtures. Prefix-less "bare hash" shapes are only shipped when a structural
+validator or a mandatory context gate can keep them false-positive-free.
 
 ---
 

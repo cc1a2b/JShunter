@@ -106,15 +106,25 @@ var (
 // (GitHub Push Protection, etc.). The runtime value is identical — Go
 // folds the constant concatenation at compile time.
 var vendorNoiseExact = map[string]struct{}{
-	"AKIA" + "IOSFODNN7EXAMPLE":                  {},
+	"AKIA" + "IOSFODNN7EXAMPLE":                     {},
 	"wJalrXUtnFEMI/K7MDENG/bPxRfi" + "CYEXAMPLEKEY": {},
-	"sk_" + "test_" + "BQokikJOvBiI2HlWgH4olfQ2": {},
-	"pk_" + "test_" + "TYooMQauvdEDq54NiTphI7jx": {},
-	"sk_" + "test_" + "4eC39HqLyjWDarjtT1zdp7dc": {},
-	"pk_" + "test_" + "6pRNAsCfBOKtIshFeQd4XMUh": {},
+	"sk_" + "test_" + "BQokikJOvBiI2HlWgH4olfQ2":    {},
+	"pk_" + "test_" + "TYooMQauvdEDq54NiTphI7jx":    {},
+	"sk_" + "test_" + "4eC39HqLyjWDarjtT1zdp7dc":    {},
+	"pk_" + "test_" + "6pRNAsCfBOKtIshFeQd4XMUh":    {},
 	"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
 		".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ" +
 		".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c": {},
+
+	// Widely copy-pasted vendor documentation sample tokens: real-entropy values
+	// that would otherwise score as live secrets. Split into fragments so this
+	// source file does not itself trip upstream secret scanners.
+	"CCIPAT_" + "ULUhR6rJLxYbyzyrP19iMZ" + "_" + "8fb1e3510325f7f09361de22b9420346c53ca2cb": {},
+	"sq0atp-" + "RdSPeJa5qDMaCesxHOjeRQ":                                                    {},
+	"sq0idp-" + "uaPHILoPzWZk3tlJqlML0g":                                                    {},
+	"glsa_" + "iNValIdinValiDinvalidinvalidinva" + "_5b582697":                              {},
+	"sl." + "AucTz_J1sX05bhNr8Pp-NTgeXT7ZccXfdXwxqcQTPsMaqj4n28mTjhmfUWlq3Wx3QDvMsml0dlg8" +
+		"msGoCFO7pEuKdModPPTwkU8wOQbQFH1R7uCdsgoiEUx29MhFZH981j7-PE": {},
 }
 
 // Substring denylist: any match containing one of these is sample/placeholder.
@@ -360,8 +370,8 @@ func registerRules() {
 				Pattern:         regexp.MustCompile(`\bSK[0-9a-fA-F]{32}\b`),
 				ConfidencePrior: 0.75,
 				MinLen:          34, MaxLen: 34,
-				HighFPProne:     true,
-				Validate:        validateTwilioSK,
+				HighFPProne: true,
+				Validate:    validateTwilioSK,
 			},
 			{
 				ID:              "twilio.account_sid",
@@ -372,7 +382,7 @@ func registerRules() {
 				Pattern:         regexp.MustCompile(`\bAC[a-f0-9]{32}\b`),
 				ConfidencePrior: 0.70,
 				MinLen:          34, MaxLen: 34,
-				HighFPProne:     true,
+				HighFPProne: true,
 			},
 			{
 				ID:              "sendgrid.api_key",
@@ -601,6 +611,9 @@ func registerRules() {
 				Validate:        validateJWT,
 			},
 		}...)
+
+		// Second wave: extended provider registry (rules_ext.go).
+		rulesRegistry = append(rulesRegistry, extendedRules()...)
 
 		for i := range rulesRegistry {
 			r := &rulesRegistry[i]
@@ -1302,13 +1315,13 @@ func validateJWT(v string) (bool, []string) {
 
 // SelfTestResult is the per-rule outcome of `--self-test`.
 type SelfTestResult struct {
-	RuleID   string `json:"rule_id"`
-	Name     string `json:"name"`
-	TPPassed int    `json:"tp_passed"`
-	TPTotal  int    `json:"tp_total"`
-	FPCaught int    `json:"fp_caught"`
-	FPTotal  int    `json:"fp_total"`
-	OK       bool   `json:"ok"`
+	RuleID   string   `json:"rule_id"`
+	Name     string   `json:"name"`
+	TPPassed int      `json:"tp_passed"`
+	TPTotal  int      `json:"tp_total"`
+	FPCaught int      `json:"fp_caught"`
+	FPTotal  int      `json:"fp_total"`
+	OK       bool     `json:"ok"`
 	Notes    []string `json:"notes,omitempty"`
 }
 
