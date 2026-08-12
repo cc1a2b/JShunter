@@ -35,13 +35,21 @@ func ParseCSPOrigins(policy string) []string {
 				continue
 			}
 			low := strings.ToLower(src)
+			// Standalone CSP keywords are exact tokens (they arrive quoted and
+			// were unquoted above). Matching them by prefix would wrongly drop
+			// legitimate hosts such as "selfhosted.example.com" or
+			// "nonexistent.example.net".
+			switch low {
+			case "self", "none", "strict-dynamic", "report-sample":
+				continue
+			}
+			// Scheme sources end in ":"; hash/nonce/unsafe sources are a keyword
+			// prefix followed by a value or variant — those stay prefix matches.
 			if strings.HasPrefix(low, "data:") || strings.HasPrefix(low, "blob:") ||
 				strings.HasPrefix(low, "mediastream:") || strings.HasPrefix(low, "filesystem:") ||
 				strings.HasPrefix(low, "ws:") || strings.HasPrefix(low, "wss:") ||
-				strings.HasPrefix(low, "self") || strings.HasPrefix(low, "none") ||
 				strings.HasPrefix(low, "nonce-") || strings.HasPrefix(low, "sha256-") ||
 				strings.HasPrefix(low, "sha384-") || strings.HasPrefix(low, "sha512-") ||
-				strings.HasPrefix(low, "strict-dynamic") || strings.HasPrefix(low, "report-sample") ||
 				strings.HasPrefix(low, "unsafe-") {
 				continue
 			}

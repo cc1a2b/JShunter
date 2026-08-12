@@ -1138,10 +1138,15 @@ func validateTargetURL(urlStr string, allowInternal bool) error {
         return fmt.Errorf("internal target %q blocked (use --allow-internal to override)", host)
     }
     if ip := net.ParseIP(host); ip != nil {
-        if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-            ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+        if isInternalIP(ip) {
             return fmt.Errorf("internal IP %q blocked (use --allow-internal to override)", host)
         }
+    }
+    // Catch non-standard IPv4 encodings (decimal 2130706433, hex 0x7f000001,
+    // octal 0177.0.0.1) that net.ParseIP rejects but the OS resolver accepts —
+    // a classic way to smuggle an internal address past a string-only guard.
+    if ip := normalizeNumericHost(host); ip != nil && isInternalIP(ip) {
+        return fmt.Errorf("internal IP %q blocked (use --allow-internal to override)", host)
     }
     return nil
 }
@@ -2315,6 +2320,11 @@ func cleanEndpoint(endpoint string) string {
 
 var endpointBackrefRe = regexp.MustCompile(`\$\d`)
 
+// Static patterns hoisted out of the per-match loops in the parameter
+// extractors below, where they were previously recompiled every iteration.
+var paramNameColonRe = regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
+var queryParamEqRe = regexp.MustCompile(`([a-zA-Z0-9_\-]+)=`)
+
 func isValidEndpoint(endpoint string) bool {
 
     if endpoint == "" {
@@ -3106,8 +3116,7 @@ func extractURLParamsWithBaseURLs(content, source string) []string {
                             // Also extract from query string part if present
                             if len(parts) > 1 {
                                 queryPart := parts[1]
-                                queryParamPattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)=`)
-                                queryMatches := queryParamPattern.FindAllStringSubmatch(queryPart, -1)
+                                queryMatches := queryParamEqRe.FindAllStringSubmatch(queryPart, -1)
                                 for _, qm := range queryMatches {
                                     if len(qm) > 1 {
                                         params = append(params, qm[1])
@@ -3143,8 +3152,7 @@ func extractURLParamsWithBaseURLs(content, source string) []string {
             apiURL := match[1]
             paramsStr := match[2]
             // Extract parameter names from params object
-            paramNamePattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
-            paramMatches := paramNamePattern.FindAllStringSubmatch(paramsStr, -1)
+            paramMatches := paramNameColonRe.FindAllStringSubmatch(paramsStr, -1)
             var params []string
             for _, pm := range paramMatches {
                 if len(pm) > 1 {
@@ -3196,8 +3204,7 @@ func extractURLParamsWithBaseURLs(content, source string) []string {
     for _, match := range matches {
         if len(match) > 1 {
             paramsStr := match[1]
-            paramNamePattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
-            paramMatches := paramNamePattern.FindAllStringSubmatch(paramsStr, -1)
+            paramMatches := paramNameColonRe.FindAllStringSubmatch(paramsStr, -1)
             var params []string
             for _, pm := range paramMatches {
                 if len(pm) > 1 {
@@ -3505,8 +3512,7 @@ func groupParamsByContext(content string, paramSet map[string]bool) [][]string {
     for _, match := range matches {
         if len(match) > 1 {
             paramsStr := match[1]
-            paramNamePattern := regexp.MustCompile(`([a-zA-Z0-9_\-]+)\s*:`)
-            paramMatches := paramNamePattern.FindAllStringSubmatch(paramsStr, -1)
+            paramMatches := paramNameColonRe.FindAllStringSubmatch(paramsStr, -1)
             var group []string
             for _, pm := range paramMatches {
                 if len(pm) > 1 {
@@ -4189,7 +4195,7 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
             if len(match) > 1 {
                 queryStr := match[1]
                 // Extract individual params from query string
-                paramParts := regexp.MustCompile(`([a-zA-Z0-9_\-]+)=`).FindAllStringSubmatch(queryStr, -1)
+                paramParts := queryParamEqRe.FindAllStringSubmatch(queryStr, -1)
                 for _, part := range paramParts {
                     if len(part) > 1 {
                         param := strings.TrimSpace(part[1])

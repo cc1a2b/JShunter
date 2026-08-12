@@ -1,0 +1,35 @@
+# golangci-lint configuration (v1.x schema; consumed by golangci-lint-action@v6).
+# Deliberately lean: a small set of high-signal linters, no style-nitpick noise.
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # Start from nothing and opt in, so a golangci-lint upgrade never silently
+  # enables a noisy new default linter.
+  disable-all: true
+  enable:
+    - govet        # suspicious constructs the compiler will not catch
+    - staticcheck  # correctness, simplification, and deprecation checks
+    - errcheck     # unchecked error returns
+    - ineffassign  # assignments whose value is never used
+    - unconvert    # redundant type conversions
+    - misspell     # common English misspellings in comments and strings
+
+linters-settings:
+  misspell:
+    locale: US
+  staticcheck:
+    checks: ["all"]
+
+issues:
+  # Report every hit; do not collapse duplicates. Keeps the signal honest.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Test files routinely ignore errors on helpers and setup, and fixture
+    # strings trip the spell-checker; keep those out of the report.
+    - path: _test\.go
+      linters:
+        - errcheck
+        - misspell

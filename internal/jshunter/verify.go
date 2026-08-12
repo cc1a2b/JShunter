@@ -77,6 +77,16 @@ func registerVerifiers() {
 	})
 }
 
+// init eagerly builds the verifier registry at package load, before any
+// goroutine exists. Callers such as reportMatchesWithConfig read the registry
+// map directly from the URL worker pool; without this, the pool's first probe
+// could read the map while registerVerifiers' sync.Once is still writing it,
+// which the runtime aborts with "concurrent map read and map write". Firing the
+// Once during single-threaded init makes every later access a read-only lookup.
+func init() {
+	registerVerifiers()
+}
+
 // hostLimiter bounds outbound calls per provider host so a verify pass over
 // many findings doesn't trip rate limits and get the operator's IP banned.
 type hostLimiter struct {

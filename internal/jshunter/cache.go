@@ -111,14 +111,62 @@ func (c *DiskCache) Store(u string, resp *http.Response, body []byte) error {
 	}
 	rawMeta, err := json.Marshal(meta)
 	if err != nil {
+		return fmt.Errorf("cache: marshal meta: %w", err)
+	}
+	// Write body first, then meta. Lookup requires a valid .meta before it
+	// trusts the .body, so the meta acts as the commit marker: writing it
+	// last means a crash — or a competing writer — can never leave a valid
+	// meta pointing at a partially written body. Both writes go through a
+	// temp-file-then-rename so a concurrent reader (or a second JSHunter
+	// process sharing --cache-dir, where our in-process mutex offers no
+	// protection) never observes a half-written or interleaved file.
+	if err := writeFileAtomic(c.bodyPath(u), body, 0o600); err != nil {
+		return fmt.Errorf("cache: write body: %w", err)
+	}
+	if err := writeFileAtomic(c.metaPath(u), rawMeta, 0o600); err != nil {
+		return fmt.Errorf("cache: write meta: %w", err)
+	}
+	return nil
+}
+
+// writeFileAtomic writes data to a temporary file in the same directory as
+// path and atomically renames it into place. rename(2) is atomic within a
+// filesystem, so a reader — including a second JSHunter process pointed at
+// the same --cache-dir — always sees either the previous complete file or
+// the new complete one, never a truncated or interleaved write. The fsync
+// before rename makes the payload durable so a crash can't leave a
+// zero-length entry that Lookup would treat as a valid cache hit.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(c.metaPath(u), rawMeta, 0o600); err != nil {
+	tmpName := tmp.Name()
+	// Best-effort cleanup if we bail before the rename commits.
+	defer func() {
+		if tmpName != "" {
+			os.Remove(tmpName)
+		}
+	}()
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
 		return err
 	}
-	if err := os.WriteFile(c.bodyPath(u), body, 0o600); err != nil {
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	tmpName = "" // rename committed; nothing left to clean up
 	return nil
 }
 
