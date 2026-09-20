@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SchemaVersion tags every JSON finding so downstream tools can detect
@@ -83,6 +84,14 @@ type Finding struct {
 	Verify        *VerifyResult `json:"verify,omitempty"`
 	Reasons       []string      `json:"reasons,omitempty"`
 	Locations     []Location    `json:"locations,omitempty"`
+
+	// v0.8 additive fields. Exposure states what disclosing the value actually
+	// costs; Evidence records the structural and statistical case behind the
+	// finding. Both are optional — absent on legacy-path findings and on
+	// bodies the scanner could not confidently classify — so schema_version
+	// stays at 2 and existing consumers are unaffected.
+	Exposure Exposure  `json:"exposure,omitempty"`
+	Evidence *Evidence `json:"evidence,omitempty"`
 }
 
 var (
@@ -536,7 +545,7 @@ func registerRules() {
 				Provider:        "PKI",
 				SecretType:      "private_key",
 				Severity:        SevCritical,
-				Pattern:         regexp.MustCompile(`-----BEGIN RSA PRIVATE KEY-----`),
+				Pattern:         regexp.MustCompile(`-----BEGIN RSA PRIVATE KEY-----[\s]{0,8}[A-Za-z0-9+/=]{32,}`),
 				ConfidencePrior: 0.99,
 			},
 			{
@@ -545,7 +554,7 @@ func registerRules() {
 				Provider:        "PKI",
 				SecretType:      "private_key",
 				Severity:        SevCritical,
-				Pattern:         regexp.MustCompile(`-----BEGIN OPENSSH PRIVATE KEY-----`),
+				Pattern:         regexp.MustCompile(`-----BEGIN OPENSSH PRIVATE KEY-----[\s]{0,8}[A-Za-z0-9+/=]{32,}`),
 				ConfidencePrior: 0.99,
 			},
 			{
@@ -554,7 +563,7 @@ func registerRules() {
 				Provider:        "PKI",
 				SecretType:      "private_key",
 				Severity:        SevCritical,
-				Pattern:         regexp.MustCompile(`-----BEGIN EC PRIVATE KEY-----`),
+				Pattern:         regexp.MustCompile(`-----BEGIN EC PRIVATE KEY-----[\s]{0,8}[A-Za-z0-9+/=]{32,}`),
 				ConfidencePrior: 0.99,
 			},
 			{
@@ -563,7 +572,7 @@ func registerRules() {
 				Provider:        "PKI",
 				SecretType:      "private_key",
 				Severity:        SevCritical,
-				Pattern:         regexp.MustCompile(`-----BEGIN PGP PRIVATE KEY BLOCK-----`),
+				Pattern:         regexp.MustCompile(`-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]{0,256}?[A-Za-z0-9+/=]{40,}`),
 				ConfidencePrior: 0.99,
 			},
 			{
@@ -608,7 +617,7 @@ func registerRules() {
 				Pattern:         regexp.MustCompile(`\beyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b`),
 				ConfidencePrior: 0.75,
 				MinLen:          60,
-				Validate:        validateJWT,
+				Validate:        validateSupabaseServiceRole,
 			},
 		}...)
 
@@ -713,11 +722,64 @@ func hasContextKeyword(context string, kws []string) bool {
 	}
 	low := strings.ToLower(context)
 	for _, kw := range kws {
-		if strings.Contains(low, strings.ToLower(kw)) {
+		if containsKeywordAtBoundary(context, low, strings.ToLower(kw)) {
 			return true
 		}
 	}
 	return false
+}
+
+// containsKeywordAtBoundary matches a keyword only where it forms a whole word
+// or a camelCase component.
+//
+// Plain substring matching made these gates inert on real bundles: "app" was
+// satisfied by appendChild, "meta" by metadata, "fb" by e.fbind, and "key" by
+// monkey and turnkey. Requiring a boundary on both sides keeps apiKey, API_KEY
+// and access_token matching while rejecting the coincidences.
+func containsKeywordAtBoundary(orig, low, kw string) bool {
+	if kw == "" {
+		return false
+	}
+	for from := 0; from+len(kw) <= len(low); {
+		i := strings.Index(low[from:], kw)
+		if i < 0 {
+			return false
+		}
+		i += from
+		if boundaryBefore(orig, low, i) && boundaryAfter(orig, low, i+len(kw)) {
+			return true
+		}
+		from = i + 1
+	}
+	return false
+}
+
+// boundaryBefore is satisfied at the start of the context, after a non-alphanumeric
+// byte, or where the keyword itself begins an uppercase camelCase component.
+func boundaryBefore(orig, low string, i int) bool {
+	if i == 0 {
+		return true
+	}
+	if !isAlphaNum(low[i-1]) {
+		return true
+	}
+	return i < len(orig) && orig[i] >= 'A' && orig[i] <= 'Z'
+}
+
+// boundaryAfter is satisfied at the end of the context, before a non-alphanumeric
+// byte, or where the next byte starts a new uppercase camelCase component.
+func boundaryAfter(orig, low string, i int) bool {
+	if i >= len(low) {
+		return true
+	}
+	if !isAlphaNum(low[i]) {
+		return true
+	}
+	return i < len(orig) && orig[i] >= 'A' && orig[i] <= 'Z'
+}
+
+func isAlphaNum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // isInVendorNoise screens canonical sample/placeholder values.
@@ -875,6 +937,14 @@ func recordFinding(f *Finding) *Finding {
 		if f.Confidence > existing.Confidence {
 			existing.Confidence = f.Confidence
 			existing.Reasons = f.Reasons
+			// Evidence is per-occurrence while a Finding is per-value after
+			// dedupe, so it follows the same rule as Reasons: the strongest
+			// occurrence is the one worth keeping.
+			if f.Evidence != nil {
+				existing.Evidence = f.Evidence
+				existing.Exposure = f.Exposure
+				existing.Severity = f.Severity
+			}
 		}
 		if f.Verified && !existing.Verified {
 			existing.Verified = true
@@ -926,6 +996,13 @@ func resetFindings() {
 // Each Finding records the byte offset, line, and column of the match so
 // downstream tools can anchor results back to the exact source location.
 func analyzeBody(source string, body []byte, minConfidence float64) []*Finding {
+	return analyzeBodyWithStructure(source, body, minConfidence, AnalyzeStructure(body))
+}
+
+// analyzeBodyWithStructure is analyzeBody over a structure index the caller has
+// already built. Scanning a body through both the curated registry and the
+// legacy pattern map would otherwise lex it twice.
+func analyzeBodyWithStructure(source string, body []byte, minConfidence float64, st *Structure) []*Finding {
 	registerRules()
 	bodyStr := string(body)
 	out := []*Finding{}
@@ -944,8 +1021,7 @@ func analyzeBody(source string, body []byte, minConfidence float64) []*Finding {
 				}
 			}
 
-			lineCtx := bodyStr[lineStartIndex(bodyStr, start):lineEndIndex(bodyStr, end)]
-			if sourcemapMarkerRe.MatchString(lineCtx) {
+			if inSourcemapMarker(st, bodyStr, start, end) {
 				if globalStats != nil {
 					statInc(&globalStats.DroppedSourcemap)
 				}
@@ -957,6 +1033,13 @@ func analyzeBody(source string, body []byte, minConfidence float64) []*Finding {
 			if !keep {
 				continue
 			}
+
+			verdict := evaluateStructure(rule, ruleNeedsBinding(rule), value, bodyStr, source, start, end, st)
+			if !verdict.Keep {
+				countStructuralDrop(verdict.Reason)
+				continue
+			}
+			score = clampConfidence(score + verdict.Delta)
 			if score < minConfidence {
 				if globalStats != nil {
 					statInc(&globalStats.DroppedBelowConf)
@@ -964,23 +1047,37 @@ func analyzeBody(source string, body []byte, minConfidence float64) []*Finding {
 				continue
 			}
 
-			line, col := positionAt(bodyStr, start)
+			exposure := ExposureSecret
+			if verdict.Evidence != nil && verdict.Evidence.Exposure != "" {
+				exposure = verdict.Evidence.Exposure
+			}
+			severity := DowngradeSeverity(rule.Severity, exposure)
+			if severity != rule.Severity && globalStats != nil {
+				statInc(&globalStats.ExposureReclassified)
+			}
+			if suppressedByExposure(exposure) || belowSeverityFloor(severity) {
+				continue
+			}
+
+			line, col := st.Position(start)
 			f := &Finding{
 				SchemaVersion: SchemaVersion,
 				RuleID:        rule.ID,
 				Name:          rule.Name,
 				Provider:      rule.Provider,
 				SecretType:    rule.SecretType,
-				Severity:      rule.Severity,
+				Severity:      severity,
 				Value:         value,
 				Redacted:      redactValue(value),
 				ValueHash:     hashValue(value),
 				Source:        source,
 				Confidence:    score,
 				Entropy:       shannonEntropy(value),
-				Reasons:       reasons,
+				Reasons:       append(reasons, verdictReasons(verdict)...),
 				Line:          line,
 				Column:        col,
+				Exposure:      exposure,
+				Evidence:      verdict.Evidence,
 			}
 			if globalStats != nil {
 				statInc(&globalStats.RegistryHits)
@@ -992,6 +1089,111 @@ func analyzeBody(source string, body []byte, minConfidence float64) []*Finding {
 		}
 	}
 	return out
+}
+
+// inSourcemapMarker reports whether a match sits on a `//# sourceMappingURL=`
+// comment. The structure index answers exactly; the fallback scans a bounded
+// window rather than the enclosing line, because on a minified bundle the
+// enclosing line is the whole file and the old check was quadratic.
+func inSourcemapMarker(st *Structure, bodyStr string, start, end int) bool {
+	if st != nil && len(st.spans) > 0 {
+		return st.InSourcemapComment(start)
+	}
+	const window = 256
+	a := start - window
+	if a < 0 {
+		a = 0
+	}
+	b := end + window
+	if b > len(bodyStr) {
+		b = len(bodyStr)
+	}
+	if ls := lineStartIndex(bodyStr, start); ls > a {
+		a = ls
+	}
+	if le := lineEndIndex(bodyStr, end); le < b {
+		b = le
+	}
+	if b <= a {
+		return false
+	}
+	return sourcemapMarkerRe.MatchString(bodyStr[a:b])
+}
+
+func clampConfidence(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// verdictReasons renders the structural signals as operator-readable reasons so
+// --show-confidence and --explain expose why a score moved.
+func verdictReasons(v structuralVerdict) []string {
+	if v.Evidence == nil || len(v.Evidence.Signals) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(v.Evidence.Signals))
+	for _, s := range v.Evidence.Signals {
+		if s.Detail != "" {
+			out = append(out, s.Name+": "+s.Detail)
+			continue
+		}
+		out = append(out, s.Name)
+	}
+	return out
+}
+
+// registryRejectsValue reports whether a curated rule that covers this exact
+// value has a provider validator that refuses it.
+//
+// The legacy pattern map has no validators, so a GitHub-token-shaped value with
+// a broken CRC32 checksum is rejected by the registry and then reported anyway
+// under a legacy name. Where the registry knows more about a value, its verdict
+// is the authoritative one.
+func registryRejectsValue(value string) (bool, string) {
+	if value == "" {
+		return false, ""
+	}
+	registerRules()
+	for i := range rulesRegistry {
+		r := &rulesRegistry[i]
+		if r.Validate == nil {
+			continue
+		}
+		m := r.Pattern.FindStringIndex(value)
+		if m == nil || m[0] != 0 || m[1] != len(value) {
+			continue
+		}
+		if ok, reasons := r.Validate(value); !ok {
+			why := r.Name + " validator rejected this value"
+			if len(reasons) > 0 {
+				why = reasons[0]
+			}
+			return true, why
+		}
+	}
+	return false, ""
+}
+
+// countStructuralDrop books a rejection against the counter that best explains
+// it, so --stats stays a usable audit trail of where matches died.
+func countStructuralDrop(reason string) {
+	if globalStats == nil {
+		return
+	}
+	switch {
+	case strings.Contains(reason, "token run"):
+		statInc(&globalStats.DroppedFragment)
+	case strings.Contains(reason, "value "), strings.Contains(reason, "prose"),
+		strings.Contains(reason, "repeated"), strings.Contains(reason, "path or URL"):
+		statInc(&globalStats.DroppedShape)
+	default:
+		statInc(&globalStats.DroppedStructural)
+	}
 }
 
 // positionAt returns the 1-indexed (line, column) of byte offset `idx` in s.
@@ -1310,7 +1512,37 @@ func validateJWT(v string) (bool, []string) {
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		return false, []string{"JWT payload is not JSON"}
 	}
-	return true, []string{"JWT structurally valid (alg present, JSON header+payload)"}
+	reasons := []string{"JWT structurally valid (alg present, JSON header+payload)"}
+	if role, ok := payload["role"].(string); ok {
+		reasons = append(reasons, "role claim: "+role)
+	}
+	if exp, ok := payload["exp"].(float64); ok && exp > 0 && time.Unix(int64(exp), 0).Before(time.Now()) {
+		reasons = append(reasons, "token expired")
+	}
+	return true, reasons
+}
+
+// validateSupabaseServiceRole separates the two keys Supabase issues with a
+// byte-identical HS256 header. The anon key is published to browsers by design;
+// the service-role key bypasses row-level security entirely. Only the `role`
+// claim tells them apart, so a rule that stops at the header reports every
+// Supabase site's public key as a critical leak.
+func validateSupabaseServiceRole(v string) (bool, []string) {
+	claims, ok := decodeJWTClaims(v)
+	if !ok {
+		return false, []string{"not a decodable three-segment JWT"}
+	}
+	role, _ := claims["role"].(string)
+	switch role {
+	case "service_role":
+		return true, []string{"role claim is 'service_role'; bypasses row-level security"}
+	case "anon", "authenticated":
+		return false, []string{"role claim is '" + role + "', the publishable Supabase key"}
+	}
+	if role == "" {
+		return false, []string{"JWT carries no Supabase role claim"}
+	}
+	return false, []string{"role claim is '" + role + "', not service_role"}
 }
 
 // SelfTestResult is the per-rule outcome of `--self-test`.
@@ -1330,6 +1562,13 @@ type SelfTestResult struct {
 // catches all TPs and rejects all FPs.
 func runSelfTest() []SelfTestResult {
 	registerRules()
+	// The self-test exercises detection, not the operator's report policy.
+	// Without this, rules whose fixtures are published-by-design values —
+	// a Square application id, a Stripe publishable key — would "fail" simply
+	// because the default policy withholds non-credentials from the report.
+	prevPublic, prevFloor := reportPublicExposure, minSeverityFloor
+	reportPublicExposure, minSeverityFloor = true, 0
+	defer func() { reportPublicExposure, minSeverityFloor = prevPublic, prevFloor }()
 	out := make([]SelfTestResult, 0, len(rulesRegistry))
 	for i := range rulesRegistry {
 		r := &rulesRegistry[i]

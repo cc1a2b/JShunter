@@ -145,14 +145,7 @@ func ToSARIF() *SARIFEnvelope {
 					"jshunter/valueHash":      f.ValueHash,
 					"jshunter/ruleSecretType": f.RuleID + ":" + f.SecretType,
 				},
-				Properties: map[string]interface{}{
-					"confidence": f.Confidence,
-					"verified":   f.Verified,
-					"value_hash": f.ValueHash,
-					"redacted":   f.Redacted,
-					"entropy":    f.Entropy,
-					"reasons":    f.Reasons,
-				},
+				Properties: sarifResultProperties(f),
 			})
 		}
 	}
@@ -182,4 +175,25 @@ func outputSARIF() {
 		return
 	}
 	fmt.Println(string(b))
+}
+
+// sarifResultProperties builds the property bag for one result. SARIF property
+// bags accept arbitrary nested JSON, so the v0.8 evidence object rides along
+// without a schema change; consumers that do not know the key ignore it.
+func sarifResultProperties(f *Finding) map[string]interface{} {
+	props := map[string]interface{}{
+		"confidence": f.Confidence,
+		"verified":   f.Verified,
+		"value_hash": f.ValueHash,
+		"redacted":   f.Redacted,
+		"entropy":    f.Entropy,
+		"reasons":    f.Reasons,
+	}
+	if f.Exposure != "" {
+		props["exposure"] = string(f.Exposure)
+	}
+	if f.Evidence != nil {
+		props["evidence"] = f.Evidence
+	}
+	return props
 }

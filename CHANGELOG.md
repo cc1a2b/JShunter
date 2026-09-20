@@ -2,6 +2,10 @@
 
 All notable changes to JSHunter are tracked here. Dates are ISO-8601.
 
+## [v0.8] — 2026-09-20
+
+## [v0.7] — 2026-05-09
+
 ## [v0.6 — page-aware crawling, sourcemaps, cache, concurrent verify] — 2026-05-08
 
 The "JS-aware crawler, not just a JS-file scanner" iteration.

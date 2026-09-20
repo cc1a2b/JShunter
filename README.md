@@ -3,7 +3,7 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.22.5+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![Release](https://img.shields.io/github/release/cc1a2b/jshunter.svg)](https://github.com/cc1a2b/jshunter/releases)
 [![GitHub stars](https://img.shields.io/github/stars/cc1a2b/jshunter)](https://github.com/cc1a2b/jshunter/stargazers)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/cc1a2b/jshunter/releases)
@@ -55,6 +55,89 @@ https://github.com/user-attachments/assets/5a5f60fa-f8dc-4aac-bd06-2e93779f9af4
 - **Professional Interface**: Enterprise-ready terminology, documentation, and comprehensive reporting formats
 - **Context-Aware Analysis**: Advanced algorithms distinguish real security tokens from encoded media data
 - **Entropy Analysis**: Mathematical algorithms identify genuine security tokens and credentials with precision
+
+### Structural Detection Engine
+
+JSHunter parses the JavaScript it scans instead of only pattern-matching it. A
+single-pass ECMAScript scanner classifies every byte of the response as string
+literal, template literal, comment, regular-expression literal, or code, and the
+detection rules are evaluated against that classification.
+
+This matters because a regex has no idea what it matched. The same forty base64
+characters mean "credential" inside a string literal, "chunk hash" inside a
+minified identifier, and nothing at all when they straddle the seam between two
+adjacent tokens. Knowing which one it is replaces a pile of proximity
+heuristics with a structural answer:
+
+- **Region gating**: a match inside a regex literal is a pattern, not a value.
+  A match that crosses a token boundary is not a single literal. A match in code
+  is an identifier fragment. All three are rejected outright.
+- **Binding context**: instead of scanning a fixed window of characters for the
+  word `key`, the engine recovers the identifier or property key the value is
+  actually bound to — `const stripeSecret = "..."` reads very differently from
+  `{contentHash: "..."}`, and a shape-only rule now requires that binding.
+- **Sibling key-sets**: the members of a Firebase web config, an Algolia search
+  config, a Segment analytics config and a Supabase browser client are
+  recognised by the shape of the object they sit in.
+- **Value shape**: digests, UUIDs, prose, paths, placeholders, and base64 that
+  decodes to a PNG, a font, a JSON document or an English sentence are each
+  identified for what they are.
+- **Exposure classification**: values the issuer publishes on purpose — Stripe
+  publishable keys, Mapbox public tokens, Supabase anon JWTs read from their own
+  `role` claim, Twilio SIDs — are classified rather than reported as leaks.
+  `--include-public` reports them anyway.
+- **File-relative surprisal**: a character-transition model built from the file
+  being scanned scores how unlike the rest of that file a candidate reads.
+
+Every rejection is conditional on the body being confidently JavaScript or JSON.
+On anything else — a `.env` file, prose, raw HTML — the engine contributes
+evidence but never suppresses, so a misclassified input can never hide a secret.
+`--no-structural` turns the whole layer off and restores v0.7 behaviour.
+
+Findings carry the reasoning as an `evidence` object in `--json`, `--ndjson` and
+the SARIF property bag:
+
+```json
+"exposure": "secret",
+"evidence": {
+  "region": "string-literal",
+  "role": "assignment",
+  "bound_to": "awsAccessKeyId",
+  "shape": "opaque-token",
+  "charset": "alphanumeric",
+  "signals": [
+    {"name": "in-literal", "delta": 0.04, "detail": "value is a complete string-literal"},
+    {"name": "credential-binding", "delta": 0.12, "detail": "bound to 'awsAccessKeyId'"}
+  ]
+}
+```
+
+`--stats` reports what each stage dropped, so the pipeline stays auditable.
+
+### Chunk Graph and Route Discovery
+
+A modern application ships one entry bundle and several hundred lazily loaded
+chunks whose URLs are assembled at runtime from a manifest the bundler inlines.
+Nothing links to them, so a crawler never sees them. `-G` recovers that manifest
+and prints the full asset list and client route table:
+
+```console
+$ jshunter -u https://target.example/_next/static/chunks/main-a1b2c3.js -G
+[CHUNKS] https://target.example/...: next runtime, 214 chunks, 37 routes
+[CHUNK]  https://target.example/...  https://target.example/_next/static/chunks/settings.11aa22bb33cc.js
+[ROUTE]  https://target.example/...  /admin/users/:id
+```
+
+Supported runtimes: webpack 4 and 5 (`__webpack_require__.u`, `miniCssF`,
+`jsonpScriptSrc`), Next.js build manifests, Vite and Rollup (`__vite__mapDeps`,
+`__vitePreload`), plain dynamic `import()`, and route tables from React Router,
+Vue Router and Angular. Output is tab-separated and deduplicated, so it pipes
+straight back in as the input list of a follow-up scan:
+
+```bash
+jshunter -u https://target.example/main.js -G -q | awk -F'\t' '/^\[CHUNK\]/{print $3}' > chunks.txt
+jshunter -l chunks.txt -s -j > findings.json
+```
 
 ### Professional HTTP & Networking Suite
 <details>
@@ -322,6 +405,12 @@ Detection Tuning:
        --rules-file FILE.json   Load an external JSON rule pack
        --only-rules id,glob     Run only matching rules (supports * glob)
        --disable-rule id,glob   Disable matching rules (supports * glob)
+
+Structural Engine:
+       --no-structural          Disable byte-level classification (regex-only, v0.7 behaviour)
+       --include-public         Report values published by design and non-granting identifiers
+       --min-severity LEVEL     Report floor: info|low|medium|high|critical
+  -G,  --chunk-graph            Enumerate lazily loaded chunks and client routes
 
 Verification:
        --verify                 Probe findings against provider read-only endpoints

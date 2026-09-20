@@ -30,6 +30,10 @@ type Stats struct {
 	DroppedNoContext     int64
 	DroppedBelowConf     int64
 	DroppedRegistryDup   int64
+	DroppedStructural    int64
+	DroppedFragment      int64
+	DroppedShape         int64
+	ExposureReclassified int64
 	FindingsAfterFilter  int64
 	FindingsAfterDedupe  int64
 	VerifyAttempts       int64
@@ -98,6 +102,10 @@ func printStats(s *Stats) {
 	fmt.Fprintf(os.Stderr, "  dropped/context : %d\n", atomic.LoadInt64(&s.DroppedNoContext))
 	fmt.Fprintf(os.Stderr, "  dropped/conf    : %d\n", atomic.LoadInt64(&s.DroppedBelowConf))
 	fmt.Fprintf(os.Stderr, "  dropped/dup     : %d\n", atomic.LoadInt64(&s.DroppedRegistryDup))
+	fmt.Fprintf(os.Stderr, "  dropped/struct  : %d\n", atomic.LoadInt64(&s.DroppedStructural))
+	fmt.Fprintf(os.Stderr, "  dropped/fragment: %d\n", atomic.LoadInt64(&s.DroppedFragment))
+	fmt.Fprintf(os.Stderr, "  dropped/shape   : %d\n", atomic.LoadInt64(&s.DroppedShape))
+	fmt.Fprintf(os.Stderr, "  reclassified    : %d (published/identifier/test scope)\n", atomic.LoadInt64(&s.ExposureReclassified))
 	fmt.Fprintf(os.Stderr, "  findings post   : %d (after dedupe %d)\n",
 		atomic.LoadInt64(&s.FindingsAfterFilter),
 		atomic.LoadInt64(&s.FindingsAfterDedupe))

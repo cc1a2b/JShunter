@@ -1,0 +1,144 @@
+{
+  "fp_algolia_docsearch_config.js": {
+    "expect": "none",
+    "note": "Algolia DocSearch appId/apiKey/indexName plus Typesense and Meilisearch search-only keys; all search-scoped and public by design."
+  },
+  "fp_analytics_public_keys.js": {
+    "expect": "none",
+    "note": "Segment writeKey, Sentry DSN, Stripe pk_live_, Mapbox pk., GA4 measurementId, Amplitude key and a Meta Pixel EAA-shaped consent blob."
+  },
+  "fp_angular_i18n_messages.js": {
+    "expect": "none",
+    "note": "Angular message catalogue keyed on password/passwd/pwd/confirmPassword/errors.password/auth.token/apiKey whose values are English sentences."
+  },
+  "fp_esbuild_debug_ids.js": {
+    "expect": "none",
+    "note": "esbuild output with Sentry _sentryDebugIds UUIDs, a //# debugId= marker and a //# sourceMappingURL= line."
+  },
+  "fp_firebase_public_config.js": {
+    "expect": "none",
+    "note": "Firebase web config (apiKey/authDomain/projectId/storageBucket/messagingSenderId/appId), a reCAPTCHA site key and a VAPID public key."
+  },
+  "fp_identifier_soup_prefixes.js": {
+    "expect": "none",
+    "note": "Provider prefixes buried inside longer runs: AIza+35 and sk-proj- and ya29. inside base64url blobs, prefixes inside mangled identifiers, a ghp_-shaped id with a broken CRC32 tail, dapi/key-/v1. wrapped digests, a Discord-bot-shaped chunk-graph key and an fw_ handle next to the word fireworks."
+  },
+  "fp_inline_base64_assets.js": {
+    "expect": "none",
+    "note": "Inlined data: URIs (PNG, SVG, WOFF2) plus base64 that decodes to JSON, to a JWKS document, to an English sentence, and a zero-filled PCM buffer that encodes as a long run of 'A'."
+  },
+  "fp_inline_script_tag.js": {
+    "expect": "none",
+    "note": "Server-rendered inline <script> body: CSP nonce, sha256/sha384 script hashes, publishable keys, CSRF token, session and request UUIDs, plus a JSON-LD block."
+  },
+  "fp_msw_mock_handlers.js": {
+    "expect": "none",
+    "note": "Mock Service Worker handlers that survived tree-shaking. The provider tokens in the mock response bodies are fabricated test data bound to credential-shaped keys (access_token, token, apiKey). CURRENTLY REPORTS FINDINGS - see README."
+  },
+  "fp_nextjs_app_router_chunk.js": {
+    "expect": "none",
+    "note": "Next.js app-router chunk: __next_f flight rows, buildId, Vercel deploymentId, build manifest, server-action ids and request/correlation UUIDs."
+  },
+  "fp_observability_trace_ids.js": {
+    "expect": "none",
+    "note": "OpenTelemetry, Datadog RUM clientToken/applicationId and a LaunchDarkly client-side id, with traceId/spanId/requestId/correlationId and W3C traceparent headers."
+  },
+  "fp_placeholder_values.js": {
+    "expect": "none",
+    "note": "Setup-wizard defaults: YOUR_API_KEY, REPLACE_ME, xxxxxxxx runs, repeated 'a' and '0' runs, sequential hex, an AKIA prefix over a repeated body, and connection URIs whose password is changeme/notset/${DB_PASSWORD}."
+  },
+  "fp_regex_literals.js": {
+    "expect": "none",
+    "note": "Client-side log redactor: credential-shaped text inside regex literals, /\\//g style patterns, a PEM banner held as a format constant, and sensitive query-key patterns."
+  },
+  "fp_sourcemap_recovered_ts.js": {
+    "expect": "none",
+    "note": "TypeScript recovered from sourcesContent, ending in an inline //# sourceMappingURL=data:...;base64 line that carries an AIza-shaped run inside the map payload."
+  },
+  "fp_supabase_anon_client.js": {
+    "expect": "none",
+    "note": "Supabase browser client whose anon key is a JWT with a {\"role\":\"anon\"} payload, shipped alongside the project URL as the vendor documents."
+  },
+  "fp_svg_css_unicode_tables.js": {
+    "expect": "none",
+    "note": "SVG path data, emotion CSS-in-JS class registry and keyframe names, @font-face unicode ranges, emoji shortcode table and ZWJ sequences."
+  },
+  "fp_twilio_shaped_ids.js": {
+    "expect": "none",
+    "note": "Twilio resource SIDs bound to accountSid/apiKeySid/messagingServiceSid etc: AC+32hex, SK+32hex and the other two-letter SID prefixes, none of which grants access."
+  },
+  "fp_vite_assets_integrity.js": {
+    "expect": "none",
+    "note": "Vite/Rollup manifest with assets/index-DmX9vQ2s.js style names, sha384 SRI integrity values, contentHash, etag, revision and buildId."
+  },
+  "fp_vue3_validation_messages.js": {
+    "expect": "none",
+    "note": "Vue 3 + vee-validate field and error catalogue keyed on password/confirmPassword/errors.password/auth.token/apiKey/secret with sentence values."
+  },
+  "fp_webpack_runtime_hashes.js": {
+    "expect": "none",
+    "note": "webpack 5 runtime chunk: chunk-id to contentHash map, module-id map, SRI table, key-<md5> cache index, <md5>-us1 regional keys and a v1.<sha1> app version."
+  },
+
+  "tp_aws_access_key.js": {
+    "expect": "some",
+    "rule_ids": ["aws.access_key_id"],
+    "min_findings": 1,
+    "note": "Server env block inlined by define(); AWS_ACCESS_KEY_ID shipped to the browser."
+  },
+  "tp_azure_storage_key.js": {
+    "expect": "some",
+    "rule_ids": ["azure.storage_account_key"],
+    "min_findings": 1,
+    "note": "Full Azure Blob connection string with AccountKey=; the 88-char body decodes to exactly 64 bytes, which is what the validator checks."
+  },
+  "tp_braintree_access_token.js": {
+    "expect": "some",
+    "rule_ids": ["braintree.access_token"],
+    "min_findings": 1,
+    "note": "Gateway access token used where a per-shopper client token belongs."
+  },
+  "tp_db_connection_uri.js": {
+    "expect": "some",
+    "rule_ids": ["db.connection_uri"],
+    "min_findings": 3,
+    "note": "Four connection URIs (two postgresql sharing one password, one mongodb+srv, one amqps) with passwords that survive the placeholder validator; the shared password dedupes to a single finding."
+  },
+  "tp_generic_api_key.js": {
+    "expect": "some",
+    "rule_ids": [],
+    "min_findings": 0,
+    "match_names_any": ["Generic Api Key", "Authorization Api"],
+    "note": "Generic apiKey assignment. No curated registry rule covers a bare provider-less key, by design (see the rules_ext.go header), so this case pins the legacy regex map instead: assert on matches[] rather than findings[]. Two legacy patterns match the same span and the surviving key is picked by Go map iteration order, so the assertion has to accept either name."
+  },
+  "tp_openrouter_key.js": {
+    "expect": "some",
+    "rule_ids": ["openrouter.api_key"],
+    "min_findings": 1,
+    "note": "Model gateway key in an Authorization: Bearer header built in the browser."
+  },
+  "tp_plaid_access_token.js": {
+    "expect": "some",
+    "rule_ids": ["plaid.access_token"],
+    "min_findings": 1,
+    "note": "Exchanged Plaid access token cached client-side; access-production- prefix keeps it out of the sandbox/test exposure class."
+  },
+  "tp_private_key_pem.js": {
+    "expect": "some",
+    "rule_ids": ["rsa.private_key"],
+    "min_findings": 1,
+    "note": "RSA PEM block with a real BEGIN/END pair and a body, so the banner-without-body suppression does not apply. A PUBLIC KEY block sits next to it and must not fire."
+  },
+  "tp_slack_webhook.js": {
+    "expect": "some",
+    "rule_ids": ["slack.webhook"],
+    "min_findings": 1,
+    "note": "Incoming-webhook URL posted to directly from the browser. Bound to SLACK_WEBHOOK_SECRET: a URL-shaped value needs a credential-named binding to survive the path-like shape test."
+  },
+  "tp_supabase_service_role.js": {
+    "expect": "some",
+    "rule_ids": ["supabase.service_role", "jwt.token"],
+    "min_findings": 2,
+    "note": "Service-role JWT in an admin bundle. Payload decodes to {\"role\":\"service_role\"}, which is what separates it from the anon key in fp_supabase_anon_client.js."
+  }
+}

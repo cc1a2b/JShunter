@@ -17,6 +17,7 @@ import (
     "regexp"
     "runtime"
     "sort"
+    "strconv"
     "strings"
     "sync"
     "time"
@@ -25,9 +26,8 @@ import (
     "golang.org/x/net/proxy"
 )
 
-
 var (
-    version = "v0.7.6"
+    version = "v0.8"
     colors = map[string]string{
         "RED":    "\033[0;31m",
         "GREEN":  "\033[0;32m",
@@ -370,6 +370,19 @@ type Config struct {
     CSPOrigins     bool
     VerifyWorkers  int
     Cache          *DiskCache
+
+    // v0.8: the structural detection engine.
+    // NoStructural disables byte-level classification entirely, restoring the
+    // v0.7 regex-only behaviour for comparison. IncludePublic reports values
+    // the issuer publishes by design (Stripe publishable keys, Firebase web
+    // config, Supabase anon JWTs) and identifiers that grant no access; they
+    // are suppressed by default because they are not leaked credentials.
+    // MinSeverity filters the report floor. ChunkGraph enumerates the lazily
+    // loaded chunks and client routes a bundle's runtime names.
+    NoStructural  bool
+    IncludePublic bool
+    MinSeverity   string
+    ChunkGraph    bool
 }
 
 func Run() {
@@ -533,7 +546,25 @@ func Run() {
     flag.BoolVar(&cspOrigins, "csp-origins", false, "Extract Content-Security-Policy origins as candidate endpoints")
     flag.IntVar(&verifyWorkers, "verify-workers", 8, "Worker pool size for concurrent --verify probes")
 
+    // v0.8 — structural detection engine
+    var noStructural, includePublic, chunkGraph bool
+    var minSeverity string
+    flag.BoolVar(&noStructural, "no-structural", false, "Disable the structural detection engine (regex-only, v0.7 behaviour)")
+    flag.BoolVar(&includePublic, "include-public", false, "Report values published by design and identifiers that grant no access")
+    flag.StringVar(&minSeverity, "min-severity", "", "Only report findings at or above this severity (info|low|medium|high|critical)")
+    flag.BoolVar(&chunkGraph, "G", false, "Enumerate lazily loaded chunks and client routes from the bundle runtime")
+    flag.BoolVar(&chunkGraph, "chunk-graph", false, "Enumerate lazily loaded chunks and client routes from the bundle runtime")
+
     flag.Parse()
+
+    if minSeverity != "" && severityRank(Severity(strings.ToLower(minSeverity))) == 0 {
+        fmt.Fprintf(os.Stderr, "[%sERROR%s] --min-severity must be one of info, low, medium, high, critical (got %q)\n",
+            colors["RED"], colors["NC"], minSeverity)
+        os.Exit(2)
+    }
+    structuralGateEnabled = !noStructural
+    reportPublicExposure = includePublic
+    minSeverityFloor = severityRank(Severity(strings.ToLower(minSeverity)))
 
     // Apply rule-registry selection BEFORE any subcommand that depends on
     // the rule set (--list-rules, --explain, --self-test).
@@ -648,6 +679,8 @@ func Run() {
         CacheDir: cacheDir, Robots: robotsMode,
         InlineHTML: inlineHTML, CSPOrigins: cspOrigins,
         VerifyWorkers: verifyWorkers,
+        NoStructural:  noStructural, IncludePublic: includePublic,
+        MinSeverity: minSeverity, ChunkGraph: chunkGraph,
     }
 
     // Initialize the run-wide stats struct lazily; counters are no-op when
@@ -1238,6 +1271,12 @@ func customHelp() {
     fmt.Println("       --rules-file FILE.json   Load an external JSON rule pack")
     fmt.Println("       --only-rules id,glob     Run only matching rules (supports * glob)")
     fmt.Println("       --disable-rule id,glob   Disable matching rules (supports * glob)")
+    fmt.Println()
+    fmt.Println("Structural Engine:")
+    fmt.Println("       --no-structural          Disable byte-level classification (regex-only, v0.7 behaviour)")
+    fmt.Println("       --include-public         Report values published by design and non-granting identifiers")
+    fmt.Println("       --min-severity LEVEL     Report floor: info|low|medium|high|critical")
+    fmt.Println("  -G,  --chunk-graph            Enumerate lazily loaded chunks and client routes")
     fmt.Println()
     fmt.Println("Verification:")
     fmt.Println("       --verify                 Probe findings against provider read-only endpoints")
@@ -2803,86 +2842,52 @@ func searchForSensitiveDataWithConfig(urlStr string, config *Config) (string, ma
 }
 
 // processJSAnalysis applies JS analysis features (deobfuscation, sourcemap, etc.)
-// stripJSComments replaces JS line (// ...) and block (/* ... */) comments
-// with spaces, preserving newlines and byte offsets. String literals
-// (", ', `) are copied verbatim so URLs and secrets that legitimately
-// contain // (e.g. "https://...") are kept intact.
+// stripJSComments blanks JS line and block comments with spaces, preserving
+// every byte offset and every newline so line and column numbers stay true to
+// the original body.
+//
+// The previous implementation scanned bytes with no notion of a regular
+// expression literal, so the `\/` immediately before the closing delimiter of
+// a pattern like /^https?:\/\// read as the start of a line comment and blanked
+// the remainder of the line. Split-on-slash regexes are ubiquitous and minified
+// bundles are one line, so a single occurrence silently discarded the rest of
+// the file before any rule ran. Driving the same transformation from the
+// ECMAScript scanner removes the entire failure class: regex literals, template
+// substitutions and quote characters inside comments are all classified
+// correctly by construction.
 func stripJSComments(body []byte) []byte {
     out := make([]byte, len(body))
-    i := 0
-    for i < len(body) {
-        c := body[i]
-
-        if c == '"' || c == '\'' || c == '`' {
-            quote := c
-            out[i] = c
-            i++
-            for i < len(body) {
-                ch := body[i]
-                out[i] = ch
-                if ch == '\\' && i+1 < len(body) {
-                    out[i+1] = body[i+1]
-                    i += 2
-                    continue
-                }
-                i++
-                if ch == quote {
+    copy(out, body)
+    lx := NewLexer(body)
+    for {
+        t := lx.Next()
+        if t.Kind == TokEOF {
                     break
-                }
-            }
+}
+        switch t.Kind {
+        case TokLineComment, TokBlockComment, TokHashbang:
+        default:
             continue
-        }
-
-        if c == '/' && i+1 < len(body) && body[i+1] == '/' {
-            for i < len(body) && body[i] != '\n' {
-                out[i] = ' '
-                i++
-            }
-            continue
-        }
-
-        if c == '/' && i+1 < len(body) && body[i+1] == '*' {
-            out[i] = ' '
-            out[i+1] = ' '
-            i += 2
-            for i < len(body) {
-                if i+1 < len(body) && body[i] == '*' && body[i+1] == '/' {
+}
+        for i := int(t.Start); i < int(t.End) && i < len(out); i++ {
+            if out[i] != '\n' {
                     out[i] = ' '
-                    out[i+1] = ' '
-                    i += 2
-                    break
-                }
-                if body[i] == '\n' {
-                    out[i] = '\n'
-                } else {
-                    out[i] = ' '
-                }
-                i++
-            }
-            continue
-        }
-
-        out[i] = c
-        i++
-    }
+}
+}
+}
     return out
 }
 
 func processJSAnalysis(body []byte, config *Config) []byte {
     content := string(body)
     
-    // Deobfuscation (basic - can be enhanced)
+    // Derived material is appended, never substituted. Rewriting the body in
+    // place shifted every byte offset after the first escape, so the line and
+    // column of every later finding pointed at the wrong place.
     if config.Deobfuscate {
         content = basicDeobfuscate(content)
     }
     
-    // Source map parsing (placeholder - would need actual sourcemap library)
-    if config.SourceMap {
-        // Extract sourcemap URL and parse if available
-        content = extractSourceMap(content)
-    }
-    
-    // Eval analysis - extract strings from eval() calls
     if config.Eval {
         content = extractEvalContent(content)
     }
@@ -2897,35 +2902,192 @@ func processJSAnalysis(body []byte, config *Config) []byte {
     return []byte(content)
 }
 
-// Basic deobfuscation helpers
+// basicDeobfuscate appends a decoded copy of every escaped string literal.
+//
+// It used to delete the two-byte sequences "\x" and "\u" from the whole body.
+// That shifted every subsequent byte offset, so line and column numbers were
+// wrong for the rest of the file, and it mangled content outright: the literal
+// "\u0041KIA..." became "0041KIA...", manufacturing both false positives and
+// false negatives. Decoding properly and appending leaves the original bytes —
+// and therefore every reported position — untouched.
 func basicDeobfuscate(content string) string {
-    // Remove common obfuscation patterns
-    // This is a basic implementation - can be enhanced
-    content = strings.ReplaceAll(content, "\\x", "")
-    content = strings.ReplaceAll(content, "\\u", "")
+    decoded := decodeEscapedLiterals(content)
+    if decoded == "" {
     return content
 }
-
-func extractSourceMap(content string) string {
-    // Extract sourcemap references
-    re := regexp.MustCompile(`//# sourceMappingURL=([^\s]+)`)
-    matches := re.FindAllStringSubmatch(content, -1)
-    if len(matches) > 0 {
-        // Would fetch and parse sourcemap here
-    }
-    return content
+    return content + "\n" + decoded
 }
 
+// decodeEscapedLiterals walks the string and template literals of a source and
+// returns the decoded payload of those that actually carry escape sequences,
+// each as its own statement so the result stays valid JavaScript.
+func decodeEscapedLiterals(content string) string {
+    src := []byte(content)
+    lx := NewLexer(src)
+    var b strings.Builder
+    seen := make(map[string]struct{}, 64)
+    for {
+        t := lx.Next()
+        if t.Kind == TokEOF {
+            break
+}
+        if t.Kind != TokString && t.Kind != TokTemplate {
+            continue
+}
+        if t.Flags&tokFlagHasEscape == 0 {
+            continue
+}
+        if t.ValEnd <= t.ValStart || int(t.ValEnd) > len(src) {
+            continue
+}
+        raw := string(src[t.ValStart:t.ValEnd])
+        dec := decodeJSEscapes(raw)
+        if dec == raw || dec == "" {
+            continue
+}
+        if _, dup := seen[dec]; dup {
+            continue
+}
+        seen[dec] = struct{}{}
+        b.WriteString("var _jsh_deobf=")
+        b.WriteString(strconv.Quote(dec))
+        b.WriteString(";\n")
+        if b.Len() > 8<<20 {
+            break
+}
+}
+    return b.String()
+}
+
+// decodeJSEscapes resolves the escape sequences a JavaScript string literal may
+// contain. Unknown escapes are passed through rather than dropped, so a value
+// is never silently altered.
+func decodeJSEscapes(s string) string {
+    var b strings.Builder
+    b.Grow(len(s))
+    for i := 0; i < len(s); {
+        if s[i] != '\\' || i+1 >= len(s) {
+            b.WriteByte(s[i])
+            i++
+            continue
+}
+        switch c := s[i+1]; c {
+        case 'x':
+            if v, ok := hexValue(s, i+2, 2); ok {
+                b.WriteRune(rune(v))
+                i += 4
+                continue
+}
+        case 'u':
+            if i+2 < len(s) && s[i+2] == '{' {
+                if end := strings.IndexByte(s[i+3:], '}'); end >= 0 {
+                    if v, ok := hexValue(s, i+3, end); ok && v <= 0x10FFFF {
+                        b.WriteRune(rune(v))
+                        i += 4 + end
+                        continue
+}
+}
+}
+            if v, ok := hexValue(s, i+2, 4); ok {
+                // Recombine a surrogate pair so astral characters survive.
+                if v >= 0xD800 && v <= 0xDBFF && i+11 < len(s) && s[i+6] == '\\' && s[i+7] == 'u' {
+                    if lo, ok2 := hexValue(s, i+8, 4); ok2 && lo >= 0xDC00 && lo <= 0xDFFF {
+                        b.WriteRune(rune(0x10000 + (v-0xD800)<<10 + (lo - 0xDC00)))
+                        i += 12
+                        continue
+}
+}
+                b.WriteRune(rune(v))
+                i += 6
+                continue
+}
+        case 'n':
+            b.WriteByte('\n')
+            i += 2
+            continue
+        case 't':
+            b.WriteByte('\t')
+            i += 2
+            continue
+        case 'r':
+            b.WriteByte('\r')
+            i += 2
+            continue
+        case '0':
+            if i+2 >= len(s) || s[i+2] < '0' || s[i+2] > '9' {
+                b.WriteByte(0)
+                i += 2
+                continue
+}
+        case '\\', '\'', '"', '`', '/':
+            b.WriteByte(c)
+            i += 2
+            continue
+        case '\n':
+            i += 2
+            continue
+}
+        b.WriteByte(s[i])
+        i++
+}
+    return b.String()
+}
+
+func hexValue(s string, from, n int) (int, bool) {
+    if n <= 0 || from+n > len(s) {
+        return 0, false
+}
+    v := 0
+    for i := from; i < from+n; i++ {
+        c := s[i]
+        switch {
+        case c >= '0' && c <= '9':
+            v = v*16 + int(c-'0')
+        case c >= 'a' && c <= 'f':
+            v = v*16 + int(c-'a') + 10
+        case c >= 'A' && c <= 'F':
+            v = v*16 + int(c-'A') + 10
+        default:
+            return 0, false
+}
+}
+    return v, true
+}
+
+// extractEvalContent appends the string argument of every eval() call as its own
+// statement, so the payload is scanned as real source.
+//
+// It used to append "// EVAL: <payload>" — a comment, which the comment stripper
+// blanked before any rule ran. The feature had been structurally dead.
 func extractEvalContent(content string) string {
-    // Extract content from eval() calls for analysis
-    re := regexp.MustCompile(`eval\s*\(\s*["']([^"']+)["']`)
-    matches := re.FindAllStringSubmatch(content, -1)
-    for _, match := range matches {
-        if len(match) > 1 {
-            content += "\n// EVAL: " + match[1]
-        }
-    }
+    src := []byte(content)
+    st := AnalyzeStructure(src)
+    var b strings.Builder
+    for i := range st.literals {
+        lit := &st.literals[i]
+        if lit.Role != RoleCallArg {
+            continue
+}
+        switch strings.ToLower(st.CalleeName(lit)) {
+        case "eval", "function", "settimeout", "setinterval":
+        default:
+            continue
+}
+        payload := decodeJSEscapes(st.LiteralValue(lit))
+        if payload == "" {
+            continue
+}
+        b.WriteString("var _jsh_eval=")
+        b.WriteString(strconv.Quote(payload))
+        b.WriteString(";\n")
+        if b.Len() > 8<<20 {
+            break
+}
+}
+    if b.Len() == 0 {
     return content
+}
+    return content + "\n" + b.String()
 }
 
 func isObfuscated(content string) bool {
@@ -3979,6 +4141,13 @@ func filterMatchesByDomain(matches []string, sourceURL string) []string {
 // reportMatchesWithConfig enhanced reporting with all security analysis features
 func reportMatchesWithConfig(source string, body []byte, config *Config) map[string][]string {
     body = stripJSComments(body)
+    // One lex pass serves both detection paths; the curated registry and the
+    // legacy pattern map would otherwise each classify the same bytes.
+    structure := AnalyzeStructure(body)
+    
+    if config.ChunkGraph {
+        emitChunkGraph(source, body, config)
+    }
     matchesMap := make(map[string][]string)
     
     // Select patterns based on config
@@ -4236,7 +4405,7 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
     // here are tracked so the legacy loop below does not re-report them.
     coveredByRegistry := make(map[string]struct{})
     if !config.ParamURLs && !config.Params {
-        registryFindings := analyzeBody(source, body, config.MinConfidence)
+        registryFindings := analyzeBodyWithStructure(source, body, config.MinConfidence, structure)
 
         // v0.6+ — optional liveness verification. Off by default. Each call
         // is bounded by --verify-timeout and goes through the host limiter
@@ -4321,6 +4490,10 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
     // Run pattern matching
     bodyStr := string(body)
     sourceDomain := extractDomain(source)
+    // Several legacy patterns describe the same class under different names,
+    // so one value was reported once per matching pattern. Report each distinct
+    // value once per source.
+    legacySeen := make(map[string]struct{})
     
     for name, pattern := range patternsToUse {
         if pattern.Match(body) {
@@ -4427,10 +4600,42 @@ func reportMatchesWithConfig(source string, body []byte, config *Config) map[str
                         continue
                     }
 
+                    // v0.8 — structural gate. The legacy map has no validators
+                    // and no provider knowledge, so it is the larger source of
+                    // false positives; region, fragment and value-shape
+                    // rejections apply here exactly as they do to the registry.
+                    // The binding requirement is not applied, because a legacy
+                    // pattern carries no signal about whether its value should
+                    // be name-bound, and demanding one would cost real findings.
+                    if !skipStructural(name) {
+                        if rejected, _ := registryRejectsValue(match); rejected {
+                            countStructuralDrop("registry validator rejected")
+                        continue
+                    }
+                        lv := evaluateStructure(nil, false, match, bodyStr, source, start, end, structure)
+                        if !lv.Keep {
+                            countStructuralDrop(lv.Reason)
+                        continue
+                    }
+                        if lv.Evidence != nil && suppressedByExposure(lv.Evidence.Exposure) {
+                            if globalStats != nil {
+                                statInc(&globalStats.ExposureReclassified)
+                    }
+                        continue
+                    }
+                    }
+
                     // v0.6 — skip if curated registry already reported this value.
                     if _, already := coveredByRegistry[match]; already {
                         continue
                     }
+                    if _, dup := legacySeen[match]; dup {
+                        if globalStats != nil {
+                            statInc(&globalStats.DroppedRegistryDup)
+                    }
+                        continue
+                    }
+                    legacySeen[match] = struct{}{}
 
                     // v0.6 — false-positive pipeline.
                     // Skip filter for URL/Link/GraphQL/Param classes which have
@@ -4768,8 +4973,10 @@ func processInputsForEndpointsWithConfig(url string, config *Config) {
         return
     }
     
+
     close(urlChannel)
     wg.Wait()
+    emitFinalOutput(config)
 }
 
 func processJSFileWithConfig(jsFile string, config *Config) {
@@ -4855,7 +5062,9 @@ func processJSFileForEndpointsWithConfig(jsFile string, config *Config) {
         writeEndpointsToFile(endpoints, config.Output, jsFile)
     } else {
         displayEndpoints(endpoints, jsFile)
-    }
+}
+
+    emitFinalOutput(config)
 }
 
 // extractEndpointsFromURLWithConfig enhanced endpoint extraction with config

@@ -40,10 +40,21 @@ jobs:
         run: |
           # Several pre-existing files are intentionally left unformatted, so the
           # gate is scoped to the files this change introduces.
-          test -z "$(gofmt -l internal/jshunter/rules_ext.go internal/jshunter/validators_ext.go)" \
-            || { echo "::error::gofmt required on:"; \
-                 gofmt -l internal/jshunter/rules_ext.go internal/jshunter/validators_ext.go; \
-                 exit 1; }
+          FILES="internal/jshunter/rules_ext.go \
+                 internal/jshunter/validators_ext.go \
+                 internal/jshunter/jslex.go \
+                 internal/jshunter/structure.go \
+                 internal/jshunter/randomness.go \
+                 internal/jshunter/exposure.go \
+                 internal/jshunter/evidence.go \
+                 internal/jshunter/chunkgraph.go \
+                 internal/jshunter/jslex_test.go \
+                 internal/jshunter/evidence_test.go \
+                 internal/jshunter/chunkgraph_test.go \
+                 internal/jshunter/corpus_test.go \
+                 internal/jshunter/corpus_tokens_test.go"
+          test -z "$(gofmt -l $FILES)" \
+            || { echo "::error::gofmt required on:"; gofmt -l $FILES; exit 1; }
 
       - name: go vet
         run: go vet ./...
