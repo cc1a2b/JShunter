@@ -368,7 +368,7 @@ func looksPathLike(s string) bool {
 }
 
 // englishStopWords is a deliberately small, high-frequency set. Its job is to
-// recognise a sentence, not to translate one.
+// recognize a sentence, not to translate one.
 var englishStopWords = []string{
 	" the ", " and ", " you ", " your ", " for ", " with ", " this ", " that ",
 	" please ", " must ", " not ", " are ", " is ", " was ", " has ", " have ",
@@ -378,7 +378,7 @@ var englishStopWords = []string{
 }
 
 // looksNaturalLanguage reports prose rather than an opaque token. The i18n
-// catalogue entries that dominate bundled front-end code all land here, and a
+// catalog entries that dominate bundled front-end code all land here, and a
 // credential essentially never does.
 func looksNaturalLanguage(s string) bool {
 	if len(s) < 8 {
@@ -527,7 +527,7 @@ func decodedPayloadKind(v string) (kind, detail string, ok bool) {
 }
 
 // tokenRunChars is the alphabet an opaque credential is drawn from. A match
-// whose neighbours inside the same literal come from this set is a slice of a
+// whose neighbors inside the same literal come from this set is a slice of a
 // longer run, not a delimited value.
 func isTokenRunChar(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
@@ -600,7 +600,7 @@ func DetectFragment(body string, start, end, limitStart, limitEnd int) FragmentV
 	return v
 }
 
-// runLooksOpaque reports whether a neighbouring run reads as encoded data
+// runLooksOpaque reports whether a neighboring run reads as encoded data
 // rather than as an identifier a developer typed.
 func runLooksOpaque(s string) bool {
 	if len(s) < 3 {

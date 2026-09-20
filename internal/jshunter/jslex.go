@@ -219,7 +219,7 @@ func (l *Lexer) Next() Token {
 	return t
 }
 
-// emitTrivia finalises a comment-like span whose end offset is already known.
+// emitTrivia finalizes a comment-like span whose end offset is already known.
 func (l *Lexer) emitTrivia(kind TokenKind, end int) Token {
 	start := l.pos
 	l.pos = end
